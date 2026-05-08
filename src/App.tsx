@@ -34,6 +34,7 @@ function App() {
 
   const [notebooks, setNotebooks] = useState<Notebook[]>([])
   const [pages, setPages] = useState<Page[]>([])
+  const [allPages, setAllPages] = useState<Page[]>([])
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
   const [selectedNotebookId, setSelectedNotebookId] = useState<string | null>(null)
@@ -111,6 +112,25 @@ function App() {
 
   const hasPrevPage = selectedPageIndex > 0
   const hasNextPage = selectedPageIndex >= 0 && selectedPageIndex < pages.length - 1
+  const bookmarkOptions = useMemo(() => {
+    const pageById = new Map(allPages.map((page) => [page.id, page]))
+    return notebooks
+      .filter((notebook) => notebook.bookmarkPageId)
+      .map((notebook) => {
+        const page = notebook.bookmarkPageId ? pageById.get(notebook.bookmarkPageId) : undefined
+        if (!page) {
+          return null
+        }
+        return {
+          id: page.id,
+          notebookId: notebook.id,
+          notebookTitle: notebook.title,
+          pageTitle: page.title,
+        }
+      })
+      .filter((entry): entry is { id: string; notebookId: string; notebookTitle: string; pageTitle: string } => entry !== null)
+  }, [allPages, notebooks])
+  const isCurrentPageBookmarked = Boolean(selectedPage && selectedNotebook?.bookmarkPageId === selectedPage.id)
 
   function goToPrevPage() {
     if (!hasPrevPage) {
@@ -157,6 +177,7 @@ function App() {
   async function refreshPages(notebookId: string) {
     const allPages = await listPagesByNotebook(notebookId)
     setPages(allPages)
+    setAllPages(await listAllPages())
     const allAttachments = await listAllAttachments()
     setAttachments(allAttachments)
 
@@ -412,6 +433,16 @@ function App() {
     setSelectedNotebookId(result.notebookId)
     await refreshPages(result.notebookId)
     setSelectedPageId(result.pageId)
+  }
+
+  async function openBookmarkPage(bookmarkPageId: string) {
+    const target = allPages.find((page) => page.id === bookmarkPageId)
+    if (!target) {
+      return
+    }
+    setSelectedNotebookId(target.notebookId)
+    await refreshPages(target.notebookId)
+    setSelectedPageId(target.id)
   }
 
   async function removeAttachment(attachmentId: string) {
@@ -910,7 +941,12 @@ function App() {
                 <div className="editor-actions-group">
                   <label className="editor-action-field">
                     <span className="editor-action-label">Bookmark</span>
-                    <button type="button" onClick={() => handleNotebookBookmark(selectedPage.id)}>
+                    <button
+                      type="button"
+                      className={`bookmark-button${isCurrentPageBookmarked ? ' active' : ''}`}
+                      aria-pressed={isCurrentPageBookmarked}
+                      onClick={() => handleNotebookBookmark(selectedPage.id)}
+                    >
                       Marcar pagina actual
                     </button>
                   </label>
@@ -982,6 +1018,30 @@ function App() {
                 >
                   Siguiente <span aria-hidden="true">›</span>
                 </button>
+                {bookmarkOptions.length > 0 ? (
+                  <label className="bookmark-nav">
+                    <span>Bookmarks</span>
+                    <select
+                      className="page-combo"
+                      value={isCurrentPageBookmarked && selectedPage ? selectedPage.id : ''}
+                      onChange={(event) => {
+                        const pageId = event.target.value
+                        if (!pageId) {
+                          return
+                        }
+                        void openBookmarkPage(pageId)
+                      }}
+                      aria-label="Ir a pagina con bookmark"
+                    >
+                      <option value="">Ir a bookmark...</option>
+                      {bookmarkOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.pageTitle} · {option.notebookTitle}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </nav>
               <section className="attachments">
                 <h3>Imagenes de la pagina</h3>
