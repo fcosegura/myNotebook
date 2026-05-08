@@ -26,6 +26,8 @@ import {
 import { buildSearchIndex, querySearch, type SearchResult } from './features/search/search'
 import { createSalt, hashPin } from './features/session/session'
 
+const BOOKMARK_TAG = 'bookmark'
+
 function App() {
   const [user, setUser] = useState<UserLocal | null>(null)
   const [unlocked, setUnlocked] = useState(false)
@@ -113,24 +115,17 @@ function App() {
   const hasPrevPage = selectedPageIndex > 0
   const hasNextPage = selectedPageIndex >= 0 && selectedPageIndex < pages.length - 1
   const bookmarkOptions = useMemo(() => {
-    const pageById = new Map(allPages.map((page) => [page.id, page]))
-    return notebooks
-      .filter((notebook) => notebook.bookmarkPageId)
-      .map((notebook) => {
-        const page = notebook.bookmarkPageId ? pageById.get(notebook.bookmarkPageId) : undefined
-        if (!page) {
-          return null
-        }
-        return {
-          id: page.id,
-          notebookId: notebook.id,
-          notebookTitle: notebook.title,
-          pageTitle: page.title,
-        }
-      })
-      .filter((entry): entry is { id: string; notebookId: string; notebookTitle: string; pageTitle: string } => entry !== null)
+    const notebookById = new Map(notebooks.map((notebook) => [notebook.id, notebook.title]))
+    return allPages
+      .filter((page) => page.tags.includes(BOOKMARK_TAG))
+      .map((page) => ({
+        id: page.id,
+        notebookId: page.notebookId,
+        notebookTitle: notebookById.get(page.notebookId) ?? 'Libreta',
+        pageTitle: page.title,
+      }))
   }, [allPages, notebooks])
-  const isCurrentPageBookmarked = Boolean(selectedPage && selectedNotebook?.bookmarkPageId === selectedPage.id)
+  const isCurrentPageBookmarked = Boolean(selectedPage?.tags.includes(BOOKMARK_TAG))
 
   function goToPrevPage() {
     if (!hasPrevPage) {
@@ -224,13 +219,16 @@ function App() {
     setSelectedPageId(page.id)
   }
 
-  async function handleNotebookBookmark(pageId: string) {
-    if (!selectedNotebook) {
+  async function handlePageBookmark() {
+    if (!selectedPage || !selectedNotebookId) {
       return
     }
-    const updated = { ...selectedNotebook, bookmarkPageId: pageId }
-    await updateNotebook(updated)
-    await refreshNotebooks()
+    const hasBookmark = selectedPage.tags.includes(BOOKMARK_TAG)
+    const updatedTags = hasBookmark
+      ? selectedPage.tags.filter((tag) => tag !== BOOKMARK_TAG)
+      : [...selectedPage.tags, BOOKMARK_TAG]
+    await updatePage({ ...selectedPage, tags: updatedTags })
+    await refreshPages(selectedNotebookId)
   }
 
   async function handleNotebookRename(notebook?: Notebook) {
@@ -945,9 +943,9 @@ function App() {
                       type="button"
                       className={`bookmark-button${isCurrentPageBookmarked ? ' active' : ''}`}
                       aria-pressed={isCurrentPageBookmarked}
-                      onClick={() => handleNotebookBookmark(selectedPage.id)}
+                      onClick={() => void handlePageBookmark()}
                     >
-                      Marcar pagina actual
+                      {isCurrentPageBookmarked ? 'Quitar bookmark' : 'Marcar pagina actual'}
                     </button>
                   </label>
                   {!pagesHidden ? (
