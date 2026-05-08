@@ -5,7 +5,16 @@ import {
   attachmentToExport,
   type BackupPayload,
 } from '../features/backup/crypto'
-import { decryptField, encryptField, isEncryptedField, isVaultUnlocked } from '../features/session/vault'
+import {
+  decryptBlob,
+  decryptField,
+  encryptBlob,
+  encryptField,
+  isEncryptedBlob,
+  isEncryptedField,
+  isVaultUnlocked,
+  unlockVaultWithPin,
+} from '../features/session/vault'
 
 const DEFAULT_NOTEBOOK_COLOR = '#4f46e5'
 const USER_ID = 'local-user'
@@ -60,11 +69,19 @@ export async function listAllPages(): Promise<Page[]> {
 }
 
 export async function listAllAttachments(): Promise<Attachment[]> {
-  return db.attachments.toArray()
+  const attachments = await db.attachments.toArray()
+  if (!isVaultUnlocked()) {
+    return attachments
+  }
+  return Promise.all(attachments.map(decryptAttachment))
 }
 
 export async function listAttachmentsByPage(pageId: string): Promise<Attachment[]> {
-  return db.attachments.where('pageId').equals(pageId).toArray()
+  const attachments = await db.attachments.where('pageId').equals(pageId).toArray()
+  if (!isVaultUnlocked()) {
+    return attachments
+  }
+  return Promise.all(attachments.map(decryptAttachment))
 }
 
 export async function createNotebook(title: string): Promise<Notebook> {
@@ -168,19 +185,24 @@ export async function addAttachment(
   height: number,
   name?: string,
 ): Promise<Attachment> {
+  const encryptedBlob = await encryptBlob(blob)
   const attachment: Attachment = {
     id: uuidv4(),
     pageId,
     name,
     mimeType: blob.type || 'image/png',
-    sizeBytes: blob.size,
+    sizeBytes: encryptedBlob.size,
     width,
     height,
-    blob,
+    blob: encryptedBlob,
     createdAt: Date.now(),
   }
   await db.attachments.add(attachment)
-  return attachment
+  return {
+    ...attachment,
+    sizeBytes: blob.size,
+    blob,
+  }
 }
 
 export async function deleteAttachment(attachmentId: string): Promise<void> {
@@ -271,7 +293,7 @@ export async function encryptExistingDataAtRest(): Promise<void> {
     return
   }
 
-  await db.transaction('rw', db.notebooks, db.pages, async () => {
+  await db.transaction('rw', db.notebooks, db.pages, db.attachments, async () => {
     const notebooks = await db.notebooks.toArray()
     const notebookUpdates = await Promise.all(
       notebooks.map(async (notebook) => {
@@ -313,7 +335,104 @@ export async function encryptExistingDataAtRest(): Promise<void> {
     if (pagesToWrite.length > 0) {
       await db.pages.bulkPut(pagesToWrite)
     }
+
+    const attachments = await db.attachments.toArray()
+    const attachmentUpdates = await Promise.all(
+      attachments.map(async (attachment) => {
+        if (await isEncryptedBlob(attachment.blob)) {
+          return null
+        }
+        return {
+          ...attachment,
+          blob: await encryptBlob(attachment.blob),
+        }
+      }),
+    )
+    const attachmentsToWrite = attachmentUpdates.filter(
+      (attachment): attachment is Attachment => attachment !== null,
+    )
+    if (attachmentsToWrite.length > 0) {
+      await db.attachments.bulkPut(attachmentsToWrite)
+    }
   })
+}
+
+export async function rotateEncryptionPin(
+  currentPin: string,
+  currentSalt: string,
+  currentIterations: number,
+  newPin: string,
+  newSalt: string,
+  newIterations: number,
+): Promise<void> {
+  if (!isVaultUnlocked()) {
+    throw new Error('Debes desbloquear la sesion antes de cambiar el PIN.')
+  }
+
+  const [notebooks, pages, attachments] = await Promise.all([
+    db.notebooks.toArray(),
+    db.pages.toArray(),
+    db.attachments.toArray(),
+  ])
+
+  const plainNotebooks = await Promise.all(
+    notebooks.map(async (notebook) => ({
+      ...notebook,
+      title: await decryptField(notebook.title),
+    })),
+  )
+  const plainPages = await Promise.all(
+    pages.map(async (page) => {
+      const tagsRaw = page.tags[0] ?? '[]'
+      const tagsJson = await decryptField(tagsRaw)
+      return {
+        ...page,
+        title: await decryptField(page.title),
+        content: await decryptField(page.content),
+        tags: parseTags(tagsJson),
+      }
+    }),
+  )
+  const plainAttachments = await Promise.all(
+    attachments.map(async (attachment) => ({
+      ...attachment,
+      blob: await decryptBlob(attachment.blob),
+    })),
+  )
+
+  await unlockVaultWithPin(newPin, newSalt, newIterations)
+
+  try {
+    const encryptedNotebooks = await Promise.all(
+      plainNotebooks.map(async (notebook) => ({
+        ...notebook,
+        title: await encryptField(notebook.title),
+      })),
+    )
+    const encryptedPages = await Promise.all(
+      plainPages.map(async (page) => ({
+        ...page,
+        title: await encryptField(page.title),
+        content: await encryptField(page.content),
+        tags: [await encryptField(JSON.stringify(page.tags))],
+      })),
+    )
+    const encryptedAttachments = await Promise.all(
+      plainAttachments.map(async (attachment) => ({
+        ...attachment,
+        blob: await encryptBlob(attachment.blob),
+      })),
+    )
+
+    await db.transaction('rw', db.notebooks, db.pages, db.attachments, async () => {
+      await db.notebooks.bulkPut(encryptedNotebooks)
+      await db.pages.bulkPut(encryptedPages)
+      await db.attachments.bulkPut(encryptedAttachments)
+    })
+  } catch (error) {
+    await unlockVaultWithPin(currentPin, currentSalt, currentIterations)
+    throw error
+  }
 }
 
 async function decryptPage(page: Page): Promise<Page> {
@@ -333,5 +452,13 @@ function parseTags(raw: string): string[] {
     return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : []
   } catch {
     return []
+  }
+}
+
+async function decryptAttachment(attachment: Attachment): Promise<Attachment> {
+  const plainBlob = await decryptBlob(attachment.blob)
+  return {
+    ...attachment,
+    blob: new Blob([plainBlob], { type: attachment.mimeType || plainBlob.type || 'application/octet-stream' }),
   }
 }

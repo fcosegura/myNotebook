@@ -15,6 +15,7 @@ import {
   importBackupPayload,
   importBackupPayloadWithMode,
   encryptExistingDataAtRest,
+  rotateEncryptionPin,
   listAllAttachments,
   listAllPages,
   listNotebooks,
@@ -35,6 +36,8 @@ function App() {
   const [unlocked, setUnlocked] = useState(false)
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
+  const [unlockAttempts, setUnlockAttempts] = useState(0)
+  const [unlockBlockedUntil, setUnlockBlockedUntil] = useState(0)
 
   const [notebooks, setNotebooks] = useState<Notebook[]>([])
   const [pages, setPages] = useState<Page[]>([])
@@ -351,6 +354,8 @@ function App() {
     await refreshNotebooks()
     setPinInput('')
     setPinError('')
+    setUnlockAttempts(0)
+    setUnlockBlockedUntil(0)
     setUnlocked(true)
   }
 
@@ -358,9 +363,19 @@ function App() {
     if (!user?.sessionConfig) {
       return
     }
+    const now = Date.now()
+    if (now < unlockBlockedUntil) {
+      const remainingSeconds = Math.max(1, Math.ceil((unlockBlockedUntil - now) / 1000))
+      setPinError(`Demasiados intentos. Espera ${remainingSeconds}s.`)
+      return
+    }
     const hash = await hashPin(pinInput, user.sessionConfig.salt, user.sessionConfig.iterations)
     if (hash !== user.sessionConfig.pinHash) {
-      setPinError('PIN incorrecto.')
+      const nextAttempts = unlockAttempts + 1
+      const backoffMs = Math.min(30_000, 2 ** Math.min(6, nextAttempts - 1) * 1000)
+      setUnlockAttempts(nextAttempts)
+      setUnlockBlockedUntil(Date.now() + backoffMs)
+      setPinError(`PIN incorrecto. Espera ${Math.ceil(backoffMs / 1000)}s para reintentar.`)
       return
     }
     await unlockVaultWithPin(pinInput, user.sessionConfig.salt, user.sessionConfig.iterations)
@@ -369,6 +384,73 @@ function App() {
     setUnlocked(true)
     setPinInput('')
     setPinError('')
+    setUnlockAttempts(0)
+    setUnlockBlockedUntil(0)
+  }
+
+  async function handlePinChange() {
+    if (!user?.sessionConfig) {
+      await requestAlertDialog({
+        title: 'PIN no configurado',
+        message: 'Primero configura un PIN para habilitar esta opcion.',
+      })
+      return
+    }
+
+    const currentPin = await requestSecret('PIN actual', 'Continuar')
+    if (!currentPin) {
+      return
+    }
+    const currentHash = await hashPin(
+      currentPin,
+      user.sessionConfig.salt,
+      user.sessionConfig.iterations,
+    )
+    if (currentHash !== user.sessionConfig.pinHash) {
+      await requestAlertDialog({
+        title: 'PIN incorrecto',
+        message: 'El PIN actual no coincide.',
+      })
+      return
+    }
+
+    const newPin = await requestSecret('Nuevo PIN', 'Guardar PIN')
+    if (!newPin) {
+      return
+    }
+    if (newPin.trim().length < 4) {
+      await requestAlertDialog({
+        title: 'PIN invalido',
+        message: 'El PIN nuevo necesita minimo 4 digitos.',
+      })
+      return
+    }
+
+    const newSalt = createSalt()
+    const newIterations = 100_000
+    const newHash = await hashPin(newPin, newSalt, newIterations)
+
+    await rotateEncryptionPin(
+      currentPin,
+      user.sessionConfig.salt,
+      user.sessionConfig.iterations,
+      newPin,
+      newSalt,
+      newIterations,
+    )
+
+    const updatedUser: UserLocal = {
+      ...user,
+      sessionConfig: {
+        pinHash: newHash,
+        salt: newSalt,
+        iterations: newIterations,
+      },
+    }
+    await updateUser(updatedUser)
+    setUser(updatedUser)
+    setBackupStatus('PIN actualizado y datos recifrados correctamente.')
+    setBackupStatusType('success')
   }
 
   async function processImagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
@@ -830,6 +912,7 @@ function App() {
           <section className="actions-menu">
             <button type="button" onClick={() => void handleExportEncryptedBackup()}>Exportar cifrado</button>
             <button type="button" onClick={() => void handleImportEncryptedBackup()}>Importar cifrado</button>
+            <button type="button" onClick={() => void handlePinChange()}>Cambiar PIN</button>
             <button type="button" onClick={() => setNotebooksHidden((value) => !value)}>
               {notebooksHidden ? 'Mostrar barra de libretas' : 'Ocultar barra de libretas'}
             </button>

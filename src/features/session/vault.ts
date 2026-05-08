@@ -1,6 +1,7 @@
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const ENCRYPTED_PREFIX = 'enc:v1:'
+const ENCRYPTED_BLOB_PREFIX = 'encb:v1:'
 
 let activeContentKey: CryptoKey | null = null
 
@@ -60,6 +61,59 @@ export async function decryptField(value: string): Promise<string> {
 
 export function isEncryptedField(value: string): boolean {
   return value.startsWith(ENCRYPTED_PREFIX)
+}
+
+export async function encryptBlob(blob: Blob): Promise<Blob> {
+  if (!activeContentKey) {
+    throw new Error('Vault bloqueado. Desbloquea la sesion para cifrar datos.')
+  }
+  if (await isEncryptedBlob(blob)) {
+    return blob
+  }
+
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const plaintext = await blob.arrayBuffer()
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    activeContentKey,
+    plaintext,
+  )
+
+  const payload = `${ENCRYPTED_BLOB_PREFIX}${toBase64(iv)}:${toBase64(new Uint8Array(ciphertext))}`
+  return new Blob([payload], { type: 'application/octet-stream' })
+}
+
+export async function decryptBlob(blob: Blob): Promise<Blob> {
+  const payload = await blob.text()
+  if (!payload.startsWith(ENCRYPTED_BLOB_PREFIX)) {
+    return blob
+  }
+  if (!activeContentKey) {
+    throw new Error('Vault bloqueado. No se pueden leer datos cifrados.')
+  }
+
+  const encoded = payload.slice(ENCRYPTED_BLOB_PREFIX.length)
+  const [ivBase64, ciphertextBase64] = encoded.split(':')
+  if (!ivBase64 || !ciphertextBase64) {
+    throw new Error('Formato de adjunto cifrado invalido.')
+  }
+
+  const iv = fromBase64(ivBase64)
+  const ciphertext = fromBase64(ciphertextBase64)
+  const plain = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    activeContentKey,
+    ciphertext,
+  )
+  return new Blob([plain], { type: blob.type || 'application/octet-stream' })
+}
+
+export async function isEncryptedBlob(blob: Blob): Promise<boolean> {
+  if (blob.size === 0) {
+    return false
+  }
+  const prefixSample = await blob.slice(0, ENCRYPTED_BLOB_PREFIX.length).text()
+  return prefixSample === ENCRYPTED_BLOB_PREFIX
 }
 
 async function deriveContentKey(pin: string, salt: string, iterations: number): Promise<CryptoKey> {
