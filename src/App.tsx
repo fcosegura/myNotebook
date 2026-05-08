@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ClipboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react'
 import './App.css'
 import type MiniSearch from 'minisearch'
 import type { Attachment, Notebook, Page, UserLocal } from './storage/db'
@@ -41,6 +41,9 @@ function App() {
   const [pastingImage, setPastingImage] = useState(false)
   const [backupStatus, setBackupStatus] = useState('')
   const [backupStatusType, setBackupStatusType] = useState<'success' | 'error' | 'info'>('info')
+  const [secretDialog, setSecretDialog] = useState<{ title: string; confirmLabel: string } | null>(null)
+  const [secretInput, setSecretInput] = useState('')
+  const secretResolverRef = useRef<((value: string | null) => void) | null>(null)
 
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
   const [pagesCollapsed, setPagesCollapsed] = useState(false)
@@ -276,7 +279,7 @@ function App() {
   }
 
   async function handleExportEncryptedBackup() {
-    const passphrase = prompt('Clave para cifrar backup')
+    const passphrase = await requestSecret('Clave para cifrar backup', 'Cifrar y exportar')
     if (!passphrase) {
       return
     }
@@ -314,7 +317,7 @@ function App() {
       void (async () => {
         setBackupStatus('Importando backup cifrado...')
         setBackupStatusType('info')
-        const passphrase = prompt('Clave para descifrar backup')
+        const passphrase = await requestSecret('Clave para descifrar backup', 'Descifrar e importar')
         if (!passphrase) {
           setBackupStatus('Importacion cancelada: no se ingreso clave.')
           setBackupStatusType('info')
@@ -349,43 +352,89 @@ function App() {
     input.click()
   }
 
+  function requestSecret(title: string, confirmLabel: string): Promise<string | null> {
+    setSecretInput('')
+    setSecretDialog({ title, confirmLabel })
+    return new Promise((resolve) => {
+      secretResolverRef.current = resolve
+    })
+  }
+
+  function closeSecretDialog(value: string | null) {
+    setSecretDialog(null)
+    const resolver = secretResolverRef.current
+    secretResolverRef.current = null
+    resolver?.(value)
+  }
+
   if (!user) {
     return <main className="app-shell">Inicializando...</main>
   }
 
   if (!unlocked) {
     return (
-      <main className="app-shell lock-screen">
-        <h1>Libreta local</h1>
-        <p>Tu sesion se guarda solo en este navegador.</p>
-        <input
-          value={pinInput}
-          onChange={(event) => setPinInput(event.target.value)}
-          placeholder="Escribe tu PIN"
-          type="password"
-        />
-        <button type="button" onClick={user.sessionConfig ? handleUnlock : handleSetupPin}>
-          {user.sessionConfig ? 'Desbloquear' : 'Configurar PIN local'}
-        </button>
-        {pinError ? <p className="error">{pinError}</p> : null}
-      </main>
+      <>
+        <main className="app-shell lock-screen">
+          <h1>Libreta local</h1>
+          <p>Tu sesion se guarda solo en este navegador.</p>
+          <input
+            value={pinInput}
+            onChange={(event) => setPinInput(event.target.value)}
+            placeholder="Escribe tu PIN"
+            type="password"
+          />
+          <button type="button" onClick={user.sessionConfig ? handleUnlock : handleSetupPin}>
+            {user.sessionConfig ? 'Desbloquear' : 'Configurar PIN local'}
+          </button>
+          {pinError ? <p className="error">{pinError}</p> : null}
+        </main>
+        {secretDialog ? (
+          <section className="secret-dialog-backdrop" role="presentation">
+            <div className="secret-dialog" role="dialog" aria-modal="true" aria-label={secretDialog.title}>
+              <h2>{secretDialog.title}</h2>
+              <input
+                value={secretInput}
+                type="password"
+                autoFocus
+                onChange={(event) => setSecretInput(event.target.value)}
+                placeholder="Escribe la clave"
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    closeSecretDialog(secretInput.trim() || null)
+                  }
+                  if (event.key === 'Escape') {
+                    closeSecretDialog(null)
+                  }
+                }}
+              />
+              <div className="secret-dialog-actions">
+                <button type="button" onClick={() => closeSecretDialog(null)}>Cancelar</button>
+                <button type="button" onClick={() => closeSecretDialog(secretInput.trim() || null)}>
+                  {secretDialog.confirmLabel}
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : null}
+      </>
     )
   }
 
   return (
-    <main className="app-shell">
-      <header className="app-header">
-        <h1>Libreta local</h1>
-        <input
-          className="search-input"
-          placeholder="Busqueda global inteligente..."
-          value={searchTerm}
-          onChange={(event) => handleSearch(event.target.value)}
-        />
-        <button type="button" onClick={() => void handleExportEncryptedBackup()}>Exportar cifrado</button>
-        <button type="button" onClick={() => void handleImportEncryptedBackup()}>Importar cifrado</button>
-      </header>
-      {backupStatus ? <p className={`backup-status ${backupStatusType}`}>{backupStatus}</p> : null}
+    <>
+      <main className="app-shell">
+        <header className="app-header">
+          <h1>Libreta local</h1>
+          <input
+            className="search-input"
+            placeholder="Busqueda global inteligente..."
+            value={searchTerm}
+            onChange={(event) => handleSearch(event.target.value)}
+          />
+          <button type="button" onClick={() => void handleExportEncryptedBackup()}>Exportar cifrado</button>
+          <button type="button" onClick={() => void handleImportEncryptedBackup()}>Importar cifrado</button>
+        </header>
+        {backupStatus ? <p className={`backup-status ${backupStatusType}`}>{backupStatus}</p> : null}
 
       {searchResults.length > 0 ? (
         <section className="search-results">
@@ -573,7 +622,36 @@ function App() {
           )}
         </article>
       </section>
-    </main>
+      </main>
+      {secretDialog ? (
+        <section className="secret-dialog-backdrop" role="presentation">
+          <div className="secret-dialog" role="dialog" aria-modal="true" aria-label={secretDialog.title}>
+            <h2>{secretDialog.title}</h2>
+            <input
+              value={secretInput}
+              type="password"
+              autoFocus
+              onChange={(event) => setSecretInput(event.target.value)}
+              placeholder="Escribe la clave"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  closeSecretDialog(secretInput.trim() || null)
+                }
+                if (event.key === 'Escape') {
+                  closeSecretDialog(null)
+                }
+              }}
+            />
+            <div className="secret-dialog-actions">
+              <button type="button" onClick={() => closeSecretDialog(null)}>Cancelar</button>
+              <button type="button" onClick={() => closeSecretDialog(secretInput.trim() || null)}>
+                {secretDialog.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+    </>
   )
 }
 
