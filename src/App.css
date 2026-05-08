@@ -619,51 +619,6 @@ textarea {
   flex: 1;
 }
 
-.note-preview {
-  border: 1px solid rgb(148 163 184 / 16%);
-  border-radius: 10px;
-  background: rgb(2 6 23 / 35%);
-  padding: 0.55rem 0.65rem;
-}
-
-.note-preview h3 {
-  margin: 0 0 0.4rem;
-  font-size: 0.84rem;
-  color: #bfdbfe;
-}
-
-.note-preview-body {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.note-preview p {
-  margin: 0;
-  font-size: 0.85rem;
-  line-height: 1.4;
-  color: #dbeafe;
-  overflow-wrap: anywhere;
-}
-
-.inline-ref-link {
-  border: 0;
-  background: transparent;
-  color: #93c5fd;
-  text-decoration: underline;
-  cursor: pointer;
-  padding: 0;
-  font: inherit;
-}
-
-.inline-ref-link:hover {
-  color: #bfdbfe;
-}
-
-.inline-ref-missing {
-  color: #fda4af;
-  text-decoration: line-through;
-}
-
 .image-modal-backdrop {
   position: fixed;
   inset: 0;

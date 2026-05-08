@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react'
 import './App.css'
 import type MiniSearch from 'minisearch'
 import type { Attachment, Notebook, Page, UserLocal } from './storage/db'
@@ -385,53 +385,6 @@ function App() {
     setImageModalAttachment(null)
   }
 
-  function renderLineWithAttachmentLinks(line: string, lineKey: string): ReactNode[] {
-    const nodes: ReactNode[] = []
-    const pattern = /\[img:([^\]]+)\]/g
-    let lastIndex = 0
-    let match = pattern.exec(line)
-    while (match) {
-      const token = match[1].trim()
-      if (match.index > lastIndex) {
-        nodes.push(line.slice(lastIndex, match.index))
-      }
-      const attachment = selectedPageAttachments.find(
-        (candidate) => (candidate.name ?? candidate.id) === token || candidate.id === token,
-      )
-      if (attachment) {
-        nodes.push(
-          <button
-            key={`${lineKey}-${token}-${match.index}`}
-            type="button"
-            className="inline-ref-link"
-            onClick={() => openAttachmentModal(attachment)}
-          >
-            [img:{token}]
-          </button>,
-        )
-      } else {
-        nodes.push(
-          <span key={`${lineKey}-${token}-${match.index}`} className="inline-ref-missing">
-            [img:{token}]
-          </span>,
-        )
-      }
-      lastIndex = match.index + match[0].length
-      match = pattern.exec(line)
-    }
-    if (lastIndex < line.length) {
-      nodes.push(line.slice(lastIndex))
-    }
-    return nodes
-  }
-
-  const notePreviewLines = useMemo(() => {
-    if (!selectedPage?.content.trim()) {
-      return []
-    }
-    return selectedPage.content.split('\n')
-  }, [selectedPage?.content])
-
   async function handleExportEncryptedBackup() {
     const passphrase = await requestSecret('Clave para cifrar backup', 'Cifrar y exportar')
     if (!passphrase) {
@@ -788,18 +741,6 @@ function App() {
                 }}
                 placeholder="Escribe tu nota aqui. Puedes pegar imagenes desde portapapeles."
               />
-              <section className="note-preview">
-                <h3>Vista previa con enlaces de imagen</h3>
-                {notePreviewLines.length === 0 ? (
-                  <p>Escribe contenido para ver enlaces [img:nombre] clickeables.</p>
-                ) : (
-                  <div className="note-preview-body">
-                    {notePreviewLines.map((line, index) => (
-                      <p key={`line-${index}`}>{renderLineWithAttachmentLinks(line, `line-${index}`)}</p>
-                    ))}
-                  </div>
-                )}
-              </section>
               <nav className="page-nav" aria-label="Navegacion entre paginas">
                 <button
                   type="button"
