@@ -54,6 +54,18 @@
   color: #cbd5e1;
 }
 
+.backup-status.success {
+  color: #86efac;
+}
+
+.backup-status.error {
+  color: #fca5a5;
+}
+
+.backup-status.info {
+  color: #cbd5e1;
+}
+
 .search-results button {
   border: 1px solid #334155;
   background: #0b1220;

@@ -40,6 +40,7 @@ function App() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [pastingImage, setPastingImage] = useState(false)
   const [backupStatus, setBackupStatus] = useState('')
+  const [backupStatusType, setBackupStatusType] = useState<'success' | 'error' | 'info'>('info')
 
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
   const [pagesCollapsed, setPagesCollapsed] = useState(false)
@@ -292,8 +293,11 @@ function App() {
       anchor.click()
       URL.revokeObjectURL(url)
       setBackupStatus('Backup cifrado exportado.')
+      setBackupStatusType('success')
     } catch (error) {
       setBackupStatus((error as Error).message || 'No se pudo exportar el backup.')
+      setBackupStatusType('error')
+      alert((error as Error).message || 'No se pudo exportar el backup.')
     }
   }
 
@@ -308,8 +312,12 @@ function App() {
       }
 
       void (async () => {
+        setBackupStatus('Importando backup cifrado...')
+        setBackupStatusType('info')
         const passphrase = prompt('Clave para descifrar backup')
         if (!passphrase) {
+          setBackupStatus('Importacion cancelada: no se ingreso clave.')
+          setBackupStatusType('info')
           return
         }
         const shouldOverwrite = confirm(
@@ -329,8 +337,12 @@ function App() {
               ? 'Backup importado correctamente (reemplazo total).'
               : 'Backup importado correctamente (merge sin borrar datos locales).',
           )
+          setBackupStatusType('success')
         } catch (error) {
-          setBackupStatus((error as Error).message || 'No se pudo importar el backup.')
+          const message = (error as Error).message || 'No se pudo importar el backup.'
+          setBackupStatus(`Error al importar: ${message}`)
+          setBackupStatusType('error')
+          alert(`Error al importar backup: ${message}`)
         }
       })()
     }
@@ -373,7 +385,7 @@ function App() {
         <button type="button" onClick={() => void handleExportEncryptedBackup()}>Exportar cifrado</button>
         <button type="button" onClick={() => void handleImportEncryptedBackup()}>Importar cifrado</button>
       </header>
-      {backupStatus ? <p className="backup-status">{backupStatus}</p> : null}
+      {backupStatus ? <p className={`backup-status ${backupStatusType}`}>{backupStatus}</p> : null}
 
       {searchResults.length > 0 ? (
         <section className="search-results">
