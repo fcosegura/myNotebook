@@ -36,6 +36,9 @@ function App() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [pastingImage, setPastingImage] = useState(false)
 
+  const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
+  const [pagesCollapsed, setPagesCollapsed] = useState(false)
+
   useEffect(() => {
     void bootstrap()
   }, [])
@@ -54,6 +57,28 @@ function App() {
     () => attachments.filter((attachment) => attachment.pageId === selectedPageId),
     [attachments, selectedPageId],
   )
+
+  const selectedPageIndex = useMemo(
+    () => pages.findIndex((page) => page.id === selectedPageId),
+    [pages, selectedPageId],
+  )
+
+  const hasPrevPage = selectedPageIndex > 0
+  const hasNextPage = selectedPageIndex >= 0 && selectedPageIndex < pages.length - 1
+
+  function goToPrevPage() {
+    if (!hasPrevPage) {
+      return
+    }
+    setSelectedPageId(pages[selectedPageIndex - 1].id)
+  }
+
+  function goToNextPage() {
+    if (!hasNextPage) {
+      return
+    }
+    setSelectedPageId(pages[selectedPageIndex + 1].id)
+  }
 
   async function bootstrap() {
     const localUser = await ensureUser()
@@ -289,43 +314,99 @@ function App() {
         </section>
       ) : null}
 
-      <section className="layout">
-        <aside className="column notebooks">
-          <div className="column-title">
-            <h2>Libretas</h2>
-            <button type="button" onClick={handleNotebookCreate}>+ Nueva</button>
-          </div>
-          {notebooks.map((notebook) => (
+      <section
+        className="layout"
+        data-notebooks-collapsed={notebooksCollapsed ? 'true' : 'false'}
+        data-pages-collapsed={pagesCollapsed ? 'true' : 'false'}
+      >
+        <aside className={`column notebooks${notebooksCollapsed ? ' collapsed' : ''}`}>
+          {notebooksCollapsed ? (
             <button
-              key={notebook.id}
               type="button"
-              className={notebook.id === selectedNotebookId ? 'active' : ''}
-              onClick={() => {
-                setSelectedNotebookId(notebook.id)
-                void refreshPages(notebook.id)
-              }}
+              className="collapse-toggle collapsed-toggle"
+              onClick={() => setNotebooksCollapsed(false)}
+              aria-label="Expandir libretas"
+              title="Expandir libretas"
             >
-              {notebook.title}
+              <span className="collapsed-label">Libretas</span>
+              <span aria-hidden="true">›</span>
             </button>
-          ))}
+          ) : (
+            <>
+              <div className="column-title">
+                <div className="column-title-left">
+                  <button
+                    type="button"
+                    className="collapse-toggle"
+                    onClick={() => setNotebooksCollapsed(true)}
+                    aria-label="Colapsar libretas"
+                    title="Colapsar libretas"
+                  >
+                    <span aria-hidden="true">‹</span>
+                  </button>
+                  <h2>Libretas</h2>
+                </div>
+                <button type="button" onClick={handleNotebookCreate}>+ Nueva</button>
+              </div>
+              {notebooks.map((notebook) => (
+                <button
+                  key={notebook.id}
+                  type="button"
+                  className={notebook.id === selectedNotebookId ? 'active' : ''}
+                  onClick={() => {
+                    setSelectedNotebookId(notebook.id)
+                    void refreshPages(notebook.id)
+                  }}
+                >
+                  {notebook.title}
+                </button>
+              ))}
+            </>
+          )}
         </aside>
 
-        <aside className="column pages">
-          <div className="column-title">
-            <h2>Paginas</h2>
-            <button type="button" onClick={handlePageCreate}>+ Nueva</button>
-          </div>
-          {pages.map((page) => (
+        <aside className={`column pages${pagesCollapsed ? ' collapsed' : ''}`}>
+          {pagesCollapsed ? (
             <button
-              key={page.id}
               type="button"
-              className={page.id === selectedPageId ? 'active' : ''}
-              onClick={() => setSelectedPageId(page.id)}
+              className="collapse-toggle collapsed-toggle"
+              onClick={() => setPagesCollapsed(false)}
+              aria-label="Expandir paginas"
+              title="Expandir paginas"
             >
-              <span>{page.title}</span>
-              {selectedNotebook?.bookmarkPageId === page.id ? <small>Bookmark</small> : null}
+              <span className="collapsed-label">Paginas</span>
+              <span aria-hidden="true">›</span>
             </button>
-          ))}
+          ) : (
+            <>
+              <div className="column-title">
+                <div className="column-title-left">
+                  <button
+                    type="button"
+                    className="collapse-toggle"
+                    onClick={() => setPagesCollapsed(true)}
+                    aria-label="Colapsar paginas"
+                    title="Colapsar paginas"
+                  >
+                    <span aria-hidden="true">‹</span>
+                  </button>
+                  <h2>Paginas</h2>
+                </div>
+                <button type="button" onClick={handlePageCreate}>+ Nueva</button>
+              </div>
+              {pages.map((page) => (
+                <button
+                  key={page.id}
+                  type="button"
+                  className={page.id === selectedPageId ? 'active' : ''}
+                  onClick={() => setSelectedPageId(page.id)}
+                >
+                  <span>{page.title}</span>
+                  {selectedNotebook?.bookmarkPageId === page.id ? <small>Bookmark</small> : null}
+                </button>
+              ))}
+            </>
+          )}
         </aside>
 
         <article className="column editor">
@@ -356,6 +437,29 @@ function App() {
                 }}
                 placeholder="Escribe tu nota aqui. Puedes pegar imagenes desde portapapeles."
               />
+              <nav className="page-nav" aria-label="Navegacion entre paginas">
+                <button
+                  type="button"
+                  onClick={goToPrevPage}
+                  disabled={!hasPrevPage}
+                  title="Pagina anterior"
+                >
+                  <span aria-hidden="true">‹</span> Anterior
+                </button>
+                <span className="page-nav-status">
+                  {selectedPageIndex >= 0
+                    ? `Pagina ${selectedPageIndex + 1} de ${pages.length}`
+                    : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={goToNextPage}
+                  disabled={!hasNextPage}
+                  title="Siguiente pagina"
+                >
+                  Siguiente <span aria-hidden="true">›</span>
+                </button>
+              </nav>
               <section className="attachments">
                 <h3>Imagenes de la pagina</h3>
                 {selectedPageAttachments.length === 0 ? (
