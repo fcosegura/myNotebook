@@ -141,8 +141,17 @@ export async function exportBackupPayload(): Promise<BackupPayload> {
 }
 
 export async function importBackupPayload(payload: BackupPayload): Promise<void> {
+  await importBackupPayloadWithMode(payload, 'replace')
+}
+
+export async function importBackupPayloadWithMode(
+  payload: BackupPayload,
+  mode: 'replace' | 'merge',
+): Promise<void> {
   await db.transaction('rw', db.users, db.notebooks, db.pages, db.attachments, async () => {
-    await Promise.all([db.users.clear(), db.notebooks.clear(), db.pages.clear(), db.attachments.clear()])
+    if (mode === 'replace') {
+      await Promise.all([db.users.clear(), db.notebooks.clear(), db.pages.clear(), db.attachments.clear()])
+    }
 
     if (payload.users.length > 0) {
       await db.users.bulkPut(payload.users)

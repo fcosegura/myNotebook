@@ -11,6 +11,7 @@ import {
   ensureUser,
   exportBackupPayload,
   importBackupPayload,
+  importBackupPayloadWithMode,
   listAllAttachments,
   listAllPages,
   listNotebooks,
@@ -311,16 +312,23 @@ function App() {
         if (!passphrase) {
           return
         }
-        const shouldOverwrite = confirm('Se reemplazaran los datos locales actuales. Deseas continuar?')
-        if (!shouldOverwrite) {
-          return
-        }
+        const shouldOverwrite = confirm(
+          'Aceptar = reemplazar datos locales. Cancelar = intentar merge sin borrar lo actual.',
+        )
         try {
           const text = await file.text()
           const payload = await parseEncryptedBackup(text, passphrase)
-          await importBackupPayload(payload)
+          if (shouldOverwrite) {
+            await importBackupPayload(payload)
+          } else {
+            await importBackupPayloadWithMode(payload, 'merge')
+          }
           await bootstrap()
-          setBackupStatus('Backup importado correctamente.')
+          setBackupStatus(
+            shouldOverwrite
+              ? 'Backup importado correctamente (reemplazo total).'
+              : 'Backup importado correctamente (merge sin borrar datos locales).',
+          )
         } catch (error) {
           setBackupStatus((error as Error).message || 'No se pudo importar el backup.')
         }
