@@ -50,6 +50,8 @@ function App() {
   const [notebooksHidden, setNotebooksHidden] = useState(false)
   const [pagesHidden, setPagesHidden] = useState(false)
   const [densityMode, setDensityMode] = useState<'compact' | 'comfortable'>('comfortable')
+  const [notebookMenuId, setNotebookMenuId] = useState<string | null>(null)
+  const [pageMenuId, setPageMenuId] = useState<string | null>(null)
   const secretResolverRef = useRef<((value: string | null) => void) | null>(null)
 
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
@@ -57,6 +59,17 @@ function App() {
 
   useEffect(() => {
     void bootstrap()
+  }, [])
+
+  useEffect(() => {
+    function handleGlobalClick() {
+      setNotebookMenuId(null)
+      setPageMenuId(null)
+    }
+    window.addEventListener('click', handleGlobalClick)
+    return () => {
+      window.removeEventListener('click', handleGlobalClick)
+    }
   }, [])
 
   const selectedNotebook = useMemo(
@@ -172,41 +185,44 @@ function App() {
     await refreshNotebooks()
   }
 
-  async function handleNotebookRename() {
-    if (!selectedNotebook) {
+  async function handleNotebookRename(notebook?: Notebook) {
+    const current = notebook ?? selectedNotebook
+    if (!current) {
       return
     }
-    const nextName = prompt('Nuevo nombre de la libreta', selectedNotebook.title)
+    const nextName = prompt('Nuevo nombre de la libreta', current.title)
     if (nextName === null) {
       return
     }
-    const updated = { ...selectedNotebook, title: nextName.trim() || 'Nueva libreta' }
+    const updated = { ...current, title: nextName.trim() || 'Nueva libreta' }
     await updateNotebook(updated)
     await refreshNotebooks()
   }
 
-  async function handleNotebookDelete() {
-    if (!selectedNotebook) {
+  async function handleNotebookDelete(notebook?: Notebook) {
+    const current = notebook ?? selectedNotebook
+    if (!current) {
       return
     }
-    const confirmed = confirm(`Se eliminara la libreta "${selectedNotebook.title}" con sus paginas y adjuntos.`)
+    const confirmed = confirm(`Se eliminara la libreta "${current.title}" con sus paginas y adjuntos.`)
     if (!confirmed) {
       return
     }
-    await deleteNotebook(selectedNotebook.id)
+    await deleteNotebook(current.id)
     setSelectedPageId(null)
     await refreshNotebooks()
   }
 
-  async function handlePageDelete() {
-    if (!selectedPage) {
+  async function handlePageDelete(page?: Page) {
+    const current = page ?? selectedPage
+    if (!current) {
       return
     }
-    const confirmed = confirm(`Se eliminara la pagina "${selectedPage.title}" con sus adjuntos.`)
+    const confirmed = confirm(`Se eliminara la pagina "${current.title}" con sus adjuntos.`)
     if (!confirmed) {
       return
     }
-    await deletePage(selectedPage.id)
+    await deletePage(current.id)
     if (selectedNotebookId) {
       await refreshPages(selectedNotebookId)
     }
@@ -495,12 +511,15 @@ function App() {
       <main className={`app-shell ${densityMode}`}>
         <header className="app-header">
           <h1>Libreta local</h1>
-          <input
-            className="search-input"
-            placeholder="Busqueda global inteligente..."
-            value={searchTerm}
-            onChange={(event) => handleSearch(event.target.value)}
-          />
+          <label className="search-input-wrap" aria-label="Busqueda global">
+            <span className="search-icon" aria-hidden="true">🔎</span>
+            <input
+              className="search-input"
+              placeholder="Busqueda global inteligente..."
+              value={searchTerm}
+              onChange={(event) => handleSearch(event.target.value)}
+            />
+          </label>
           <div className="toolbar-group">
             <button type="button" onClick={handleNotebookCreate} title="Nueva libreta">+ Libreta</button>
             <button type="button" onClick={handlePageCreate} title="Nueva pagina" disabled={!selectedNotebookId}>
@@ -542,12 +561,9 @@ function App() {
         </section>
       ) : null}
 
-      <section className="layout">
+      <section className="layout master-detail-layout">
         {!notebooksHidden ? (
-          <aside
-            className={`column notebooks${notebooksCollapsed ? ' collapsed' : ''}`}
-            style={{ width: notebooksCollapsed ? '44px' : '240px' }}
-          >
+          <aside className={`column notebooks master-sidebar${notebooksCollapsed ? ' collapsed' : ''}`}>
           {notebooksCollapsed ? (
             <button
               type="button"
@@ -561,7 +577,7 @@ function App() {
             </button>
           ) : (
             <>
-              <div className="column-title">
+              <div className="column-title section-title">
                 <div className="column-title-left">
                   <button
                     type="button"
@@ -574,87 +590,117 @@ function App() {
                   </button>
                   <h2>Libretas</h2>
                 </div>
-                <div className="column-actions">
-                  <button type="button" onClick={handleNotebookCreate}>+ Nueva</button>
-                  <button type="button" onClick={handleNotebookRename} disabled={!selectedNotebook}>Renombrar</button>
-                  <button type="button" onClick={() => void handleNotebookDelete()} disabled={!selectedNotebook}>
-                    Eliminar
-                  </button>
-                </div>
               </div>
               {notebooks.map((notebook) => (
-                <button
-                  key={notebook.id}
-                  type="button"
-                  className={notebook.id === selectedNotebookId ? 'active' : ''}
-                  onClick={() => {
-                    setSelectedNotebookId(notebook.id)
-                    void refreshPages(notebook.id)
-                  }}
-                >
-                  {notebook.title}
-                </button>
-              ))}
-            </>
-          )}
-          </aside>
-        ) : null}
-
-        {!pagesHidden ? (
-          <aside
-            className={`column pages${pagesCollapsed ? ' collapsed' : ''}`}
-            style={{ width: pagesCollapsed ? '44px' : '240px' }}
-          >
-          {pagesCollapsed ? (
-            <button
-              type="button"
-              className="collapse-toggle collapsed-toggle"
-              onClick={() => setPagesCollapsed(false)}
-              aria-label="Expandir paginas"
-              title="Expandir paginas"
-            >
-              <span className="collapsed-label">Paginas</span>
-              <span aria-hidden="true">›</span>
-            </button>
-          ) : (
-            <>
-              <div className="column-title">
-                <div className="column-title-left">
+                <article key={notebook.id} className={`list-item-shell${notebook.id === selectedNotebookId ? ' active' : ''}`}>
                   <button
                     type="button"
-                    className="collapse-toggle"
-                    onClick={() => setPagesCollapsed(true)}
-                    aria-label="Colapsar paginas"
-                    title="Colapsar paginas"
+                    className={`list-item row-item${notebook.id === selectedNotebookId ? ' active' : ''}`}
+                    onClick={() => {
+                      setSelectedNotebookId(notebook.id)
+                      void refreshPages(notebook.id)
+                    }}
                   >
-                    <span aria-hidden="true">‹</span>
+                    <span className="item-main">
+                      <span className="item-icon" aria-hidden="true">📒</span>
+                      <span>{notebook.title}</span>
+                    </span>
                   </button>
-                  <h2>Paginas</h2>
-                </div>
-                <div className="column-actions">
-                  <button type="button" onClick={handlePageCreate}>+ Nueva</button>
-                  <button type="button" onClick={() => void handlePageDelete()} disabled={!selectedPage}>
-                    Eliminar
+                  <button
+                    type="button"
+                    className="item-menu-button"
+                    aria-label={`Acciones para ${notebook.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setNotebookMenuId((value) => (value === notebook.id ? null : notebook.id))
+                    }}
+                  >
+                    ⋮
                   </button>
-                </div>
-              </div>
-              {pages.map((page) => (
-                <button
-                  key={page.id}
-                  type="button"
-                  className={page.id === selectedPageId ? 'active' : ''}
-                  onClick={() => setSelectedPageId(page.id)}
-                >
-                  <span>{page.title}</span>
-                  {selectedNotebook?.bookmarkPageId === page.id ? <small>Bookmark</small> : null}
-                </button>
+                  {notebookMenuId === notebook.id ? (
+                    <div className="context-menu" onClick={(event) => event.stopPropagation()}>
+                      <button type="button" onClick={() => void handleNotebookRename(notebook)}>Renombrar</button>
+                      <button type="button" onClick={() => void handleNotebookDelete(notebook)}>Eliminar</button>
+                    </div>
+                  ) : null}
+                </article>
               ))}
+              <button type="button" className="new-item-button" onClick={handleNotebookCreate}>
+                + Nueva libreta
+              </button>
             </>
           )}
           </aside>
         ) : null}
 
-        <article className="column editor">
+        <section className="workspace-panel">
+          {!pagesHidden ? (
+            <aside className={`column pages workspace-pages${pagesCollapsed ? ' collapsed' : ''}`}>
+              {pagesCollapsed ? (
+                <button
+                  type="button"
+                  className="collapse-toggle collapsed-toggle"
+                  onClick={() => setPagesCollapsed(false)}
+                  aria-label="Expandir paginas"
+                  title="Expandir paginas"
+                >
+                  <span className="collapsed-label">Paginas</span>
+                  <span aria-hidden="true">›</span>
+                </button>
+              ) : (
+                <>
+                  <div className="column-title section-title">
+                    <div className="column-title-left">
+                      <button
+                        type="button"
+                        className="collapse-toggle"
+                        onClick={() => setPagesCollapsed(true)}
+                        aria-label="Colapsar paginas"
+                        title="Colapsar paginas"
+                      >
+                        <span aria-hidden="true">‹</span>
+                      </button>
+                      <h2>Paginas</h2>
+                    </div>
+                  </div>
+                  {pages.map((page) => (
+                    <article key={page.id} className={`list-item-shell${page.id === selectedPageId ? ' active' : ''}`}>
+                      <button
+                        type="button"
+                        className={`list-item row-item${page.id === selectedPageId ? ' active' : ''}`}
+                        onClick={() => setSelectedPageId(page.id)}
+                      >
+                        <span className="item-main">
+                          <span className="item-icon" aria-hidden="true">📝</span>
+                          <span>{page.title}</span>
+                        </span>
+                        {selectedNotebook?.bookmarkPageId === page.id ? <small>Bookmark</small> : null}
+                      </button>
+                      <button
+                        type="button"
+                        className="item-menu-button"
+                        aria-label={`Acciones para ${page.title}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setPageMenuId((value) => (value === page.id ? null : page.id))
+                        }}
+                      >
+                        ⋮
+                      </button>
+                      {pageMenuId === page.id ? (
+                        <div className="context-menu" onClick={(event) => event.stopPropagation()}>
+                          <button type="button" onClick={() => void handlePageDelete(page)}>Eliminar</button>
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                  <button type="button" className="new-item-button" onClick={handlePageCreate}>+ Nueva pagina</button>
+                </>
+              )}
+            </aside>
+          ) : null}
+
+          <article className="column editor">
           {!selectedPage ? (
             <p>Selecciona una pagina para editar.</p>
           ) : (
@@ -732,7 +778,8 @@ function App() {
               </section>
             </>
           )}
-        </article>
+          </article>
+        </section>
       </section>
       </main>
       {renderSecretDialog()}

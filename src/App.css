@@ -72,6 +72,34 @@
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
+.search-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid rgb(148 163 184 / 28%);
+  border-radius: 9px;
+  background: rgb(2 6 23 / 72%);
+  padding: 0 0.55rem;
+}
+
+.search-input-wrap:focus-within {
+  border-color: rgb(129 140 248 / 80%);
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 20%);
+}
+
+.search-icon {
+  font-size: 0.85rem;
+  opacity: 0.86;
+}
+
+.search-input-wrap .search-input {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-left: 0.2rem;
+}
+
 .search-input:focus {
   outline: none;
   border-color: rgb(129 140 248 / 80%);
@@ -164,6 +192,25 @@
   animation: fade-slide-in 0.26s ease;
 }
 
+.master-detail-layout {
+  align-items: stretch;
+}
+
+.master-sidebar {
+  width: 250px;
+}
+
+.workspace-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 0.85rem;
+}
+
+.workspace-pages {
+  width: 270px;
+}
+
 .column {
   border: 1px solid rgb(148 163 184 / 20%);
   border-radius: 12px;
@@ -202,7 +249,8 @@
 
 .column-title-left h2 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 1rem;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -251,6 +299,75 @@
   padding: 0.5rem;
   text-align: left;
   transition: all 0.16s ease;
+}
+
+.list-item-shell {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.list-item-shell.active::before {
+  content: '';
+  position: absolute;
+  left: -0.4rem;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  width: 2px;
+  border-radius: 99px;
+  background: #818cf8;
+}
+
+.list-item {
+  flex: 1;
+}
+
+.row-item {
+  font-size: 0.9rem;
+}
+
+.item-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.item-icon {
+  opacity: 0.9;
+  font-size: 0.9rem;
+}
+
+.item-menu-button {
+  width: 32px;
+  min-width: 32px;
+  text-align: center !important;
+  padding: 0 !important;
+  font-size: 0.95rem;
+}
+
+.context-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 2px);
+  z-index: 15;
+  min-width: 130px;
+  border: 1px solid rgb(148 163 184 / 25%);
+  border-radius: 8px;
+  background: rgb(2 6 23 / 94%);
+  padding: 0.25rem;
+  box-shadow: 0 12px 24px rgb(2 6 23 / 55%);
+}
+
+.context-menu button {
+  width: 100%;
+  text-align: left;
+  margin: 0;
+}
+
+.new-item-button {
+  margin-top: auto;
 }
 
 .column button:hover {
@@ -486,6 +603,10 @@ textarea {
   font-size: 0.86rem;
 }
 
+.app-shell.compact .row-item {
+  font-size: 0.82rem;
+}
+
 .app-shell.compact .editor-title,
 .app-shell.compact textarea {
   padding: 0.45rem;
@@ -524,6 +645,10 @@ textarea {
 
   .toolbar-group {
     width: 100%;
+  }
+
+  .workspace-panel {
+    flex-direction: column;
   }
 
   .column {
