@@ -460,6 +460,22 @@ textarea {
   color: #93c5fd;
 }
 
+.page-combo {
+  min-width: 180px;
+  max-width: 320px;
+  border: 1px solid rgb(148 163 184 / 26%);
+  border-radius: 8px;
+  background: rgb(2 6 23 / 76%);
+  color: #e2e8f0;
+  padding: 0.42rem 0.55rem;
+}
+
+.page-combo:focus {
+  outline: none;
+  border-color: rgb(129 140 248 / 80%);
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 18%);
+}
+
 .page-nav {
   display: flex;
   justify-content: space-between;
