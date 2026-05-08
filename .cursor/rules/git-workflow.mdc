@@ -1,0 +1,36 @@
+---
+description: Convencion de flujo de trabajo Git (hotfix vs PR normal)
+alwaysApply: true
+---
+
+# Flujo de trabajo Git
+
+Cuando el usuario pida cambios de codigo, sigue este flujo SIEMPRE despues de aplicar las modificaciones, sin necesidad de pedir permiso adicional para los pasos de git.
+
+## Caso 1: el usuario dice "hotfix"
+
+Si la peticion contiene la palabra `hotfix` (en mayusculas o minusculas), aplicar directo a `main`:
+
+1. `git checkout main` (si no estamos ya).
+2. `git pull --ff-only origin main` para evitar conflictos.
+3. `git add` de los archivos modificados.
+4. `git commit -m "hotfix: <mensaje>"`.
+5. `git push origin main`.
+6. NO crear branch ni PR. NO preguntar antes de hacer push.
+
+## Caso 2: cualquier otra peticion (default)
+
+Si NO se menciona `hotfix`:
+
+1. Crear una branch nueva con nombre descriptivo en `kebab-case`, p. ej. `feat/ui-collapsible-columns` o `fix/page-nav-disabled`.
+2. `git add` + `git commit` con mensaje claro (estilo: `tipo: descripcion corta`).
+3. `git push -u origin <branch>`.
+4. Crear el PR contra `main` con `gh pr create` usando un body con secciones `## Summary` y `## Test plan`.
+5. Devolver la URL del PR al usuario.
+6. NO hacer merge automatico — el usuario revisa el PR.
+
+## Reglas adicionales
+
+- Nunca usar `--force` ni `--no-verify` salvo peticion explicita.
+- Si hay cambios sin commitear que no son del task actual, avisar antes de incluirlos.
+- Si el push o el PR fallan, reportar el error y no insistir con flags destructivas.
