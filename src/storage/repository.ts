@@ -73,7 +73,7 @@ export async function listAllAttachments(): Promise<Attachment[]> {
   if (!isVaultUnlocked()) {
     return attachments
   }
-  return Promise.all(attachments.map(decryptAttachment))
+  return Promise.all(attachments.map(decryptAttachmentSafely))
 }
 
 export async function listAttachmentsByPage(pageId: string): Promise<Attachment[]> {
@@ -81,7 +81,7 @@ export async function listAttachmentsByPage(pageId: string): Promise<Attachment[
   if (!isVaultUnlocked()) {
     return attachments
   }
-  return Promise.all(attachments.map(decryptAttachment))
+  return Promise.all(attachments.map(decryptAttachmentSafely))
 }
 
 export async function createNotebook(title: string): Promise<Notebook> {
@@ -339,12 +339,16 @@ export async function encryptExistingDataAtRest(): Promise<void> {
     const attachments = await db.attachments.toArray()
     const attachmentUpdates = await Promise.all(
       attachments.map(async (attachment) => {
-        if (await isEncryptedBlob(attachment.blob)) {
+        try {
+          if (await isEncryptedBlob(attachment.blob)) {
+            return null
+          }
+          return {
+            ...attachment,
+            blob: await encryptBlob(attachment.blob),
+          }
+        } catch {
           return null
-        }
-        return {
-          ...attachment,
-          blob: await encryptBlob(attachment.blob),
         }
       }),
     )
@@ -460,5 +464,13 @@ async function decryptAttachment(attachment: Attachment): Promise<Attachment> {
   return {
     ...attachment,
     blob: new Blob([plainBlob], { type: attachment.mimeType || plainBlob.type || 'application/octet-stream' }),
+  }
+}
+
+async function decryptAttachmentSafely(attachment: Attachment): Promise<Attachment> {
+  try {
+    return await decryptAttachment(attachment)
+  } catch {
+    return attachment
   }
 }

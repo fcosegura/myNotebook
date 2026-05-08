@@ -426,14 +426,24 @@ function App() {
       setPinError(`PIN incorrecto. Espera ${Math.ceil(backoffMs / 1000)}s para reintentar.`)
       return
     }
-    await unlockVaultWithPin(pinInput, user.sessionConfig.salt, user.sessionConfig.iterations)
-    await encryptExistingDataAtRest()
-    await refreshNotebooks()
-    setUnlocked(true)
-    setPinInput('')
-    setPinError('')
-    setUnlockAttempts(0)
-    setUnlockBlockedUntil(0)
+    try {
+      await unlockVaultWithPin(pinInput, user.sessionConfig.salt, user.sessionConfig.iterations)
+      setUnlocked(true)
+      setPinInput('')
+      setPinError('')
+      setUnlockAttempts(0)
+      setUnlockBlockedUntil(0)
+
+      try {
+        await encryptExistingDataAtRest()
+      } catch (error) {
+        setBackupStatus(`No se pudo completar la migracion de cifrado: ${(error as Error).message}`)
+        setBackupStatusType('error')
+      }
+      await refreshNotebooks()
+    } catch (error) {
+      setPinError((error as Error).message || 'No se pudo desbloquear la sesion.')
+    }
   }
 
   async function handlePinChange() {
