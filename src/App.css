@@ -198,6 +198,13 @@
 
 .master-sidebar {
   width: 250px;
+  transition: width 0.2s ease, padding 0.2s ease;
+}
+
+.master-sidebar.collapsed {
+  width: 52px;
+  padding-left: 0.3rem;
+  padding-right: 0.3rem;
 }
 
 .workspace-panel {
