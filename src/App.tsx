@@ -14,6 +14,7 @@ import {
   exportBackupPayload,
   importBackupPayload,
   importBackupPayloadWithMode,
+  encryptExistingDataAtRest,
   listAllAttachments,
   listAllPages,
   listNotebooks,
@@ -25,6 +26,7 @@ import {
 } from './storage/repository'
 import { buildSearchIndex, querySearch, type SearchResult } from './features/search/search'
 import { createSalt, hashPin } from './features/session/session'
+import { lockVault, unlockVaultWithPin } from './features/session/vault'
 
 const BOOKMARK_TAG = 'bookmark'
 
@@ -142,11 +144,11 @@ function App() {
   }
 
   async function bootstrap() {
+    lockVault()
     const localUser = await ensureUser()
     setUser(localUser)
     // Always show lock/setup screen on app entry.
     setUnlocked(false)
-    await refreshNotebooks()
   }
 
   async function refreshNotebooks() {
@@ -344,7 +346,9 @@ function App() {
       },
     }
     await updateUser(updatedUser)
+    await unlockVaultWithPin(pinInput, salt, 100_000)
     setUser(updatedUser)
+    await refreshNotebooks()
     setPinInput('')
     setPinError('')
     setUnlocked(true)
@@ -359,6 +363,9 @@ function App() {
       setPinError('PIN incorrecto.')
       return
     }
+    await unlockVaultWithPin(pinInput, user.sessionConfig.salt, user.sessionConfig.iterations)
+    await encryptExistingDataAtRest()
+    await refreshNotebooks()
     setUnlocked(true)
     setPinInput('')
     setPinError('')

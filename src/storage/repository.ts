@@ -5,6 +5,7 @@ import {
   attachmentToExport,
   type BackupPayload,
 } from '../features/backup/crypto'
+import { decryptField, encryptField, isEncryptedField, isVaultUnlocked } from '../features/session/vault'
 
 const DEFAULT_NOTEBOOK_COLOR = '#4f46e5'
 const USER_ID = 'local-user'
@@ -30,15 +31,32 @@ export async function updateUser(user: UserLocal): Promise<void> {
 }
 
 export async function listNotebooks(): Promise<Notebook[]> {
-  return db.notebooks.orderBy('updatedAt').reverse().toArray()
+  const notebooks = await db.notebooks.orderBy('updatedAt').reverse().toArray()
+  if (!isVaultUnlocked()) {
+    return notebooks
+  }
+  return Promise.all(
+    notebooks.map(async (notebook) => ({
+      ...notebook,
+      title: await decryptField(notebook.title),
+    })),
+  )
 }
 
 export async function listPagesByNotebook(notebookId: string): Promise<Page[]> {
-  return db.pages.where('notebookId').equals(notebookId).sortBy('updatedAt')
+  const pages = await db.pages.where('notebookId').equals(notebookId).sortBy('updatedAt')
+  if (!isVaultUnlocked()) {
+    return pages
+  }
+  return Promise.all(pages.map(decryptPage))
 }
 
 export async function listAllPages(): Promise<Page[]> {
-  return db.pages.toArray()
+  const pages = await db.pages.toArray()
+  if (!isVaultUnlocked()) {
+    return pages
+  }
+  return Promise.all(pages.map(decryptPage))
 }
 
 export async function listAllAttachments(): Promise<Attachment[]> {
@@ -51,9 +69,10 @@ export async function listAttachmentsByPage(pageId: string): Promise<Attachment[
 
 export async function createNotebook(title: string): Promise<Notebook> {
   const now = Date.now()
+  const plainTitle = title.trim() || 'Nueva libreta'
   const notebook: Notebook = {
     id: uuidv4(),
-    title: title.trim() || 'Nueva libreta',
+    title: await encryptField(plainTitle),
     color: DEFAULT_NOTEBOOK_COLOR,
     pinned: false,
     bookmarkPageId: null,
@@ -70,18 +89,25 @@ export async function createNotebook(title: string): Promise<Notebook> {
 }
 
 export async function updateNotebook(notebook: Notebook): Promise<void> {
-  notebook.updatedAt = Date.now()
-  await db.notebooks.put(notebook)
+  const encryptedNotebook: Notebook = {
+    ...notebook,
+    title: await encryptField(notebook.title),
+    updatedAt: Date.now(),
+  }
+  await db.notebooks.put(encryptedNotebook)
 }
 
 export async function createPage(notebookId: string, title: string): Promise<Page> {
   const now = Date.now()
+  const encryptedTitle = await encryptField(title.trim() || 'Nueva pagina')
+  const encryptedContent = await encryptField('')
+  const encryptedTags = await encryptField(JSON.stringify([]))
   const page: Page = {
     id: uuidv4(),
     notebookId,
-    title: title.trim() || 'Nueva pagina',
-    content: '',
-    tags: [],
+    title: encryptedTitle,
+    content: encryptedContent,
+    tags: [encryptedTags],
     createdAt: now,
     updatedAt: now,
   }
@@ -91,9 +117,16 @@ export async function createPage(notebookId: string, title: string): Promise<Pag
 }
 
 export async function updatePage(page: Page): Promise<void> {
-  page.updatedAt = Date.now()
-  await db.pages.put(page)
-  await db.notebooks.update(page.notebookId, { updatedAt: page.updatedAt })
+  const encryptedTags = await encryptField(JSON.stringify(page.tags))
+  const encryptedPage: Page = {
+    ...page,
+    title: await encryptField(page.title),
+    content: await encryptField(page.content),
+    tags: [encryptedTags],
+    updatedAt: Date.now(),
+  }
+  await db.pages.put(encryptedPage)
+  await db.notebooks.update(page.notebookId, { updatedAt: encryptedPage.updatedAt })
 }
 
 export async function movePageBefore(
@@ -231,4 +264,74 @@ export async function importBackupPayloadWithMode(
       await db.attachments.bulkPut(payload.attachments.map((attachment) => attachmentFromExport(attachment)))
     }
   })
+}
+
+export async function encryptExistingDataAtRest(): Promise<void> {
+  if (!isVaultUnlocked()) {
+    return
+  }
+
+  await db.transaction('rw', db.notebooks, db.pages, async () => {
+    const notebooks = await db.notebooks.toArray()
+    const notebookUpdates = await Promise.all(
+      notebooks.map(async (notebook) => {
+        if (isEncryptedField(notebook.title)) {
+          return null
+        }
+        return {
+          ...notebook,
+          title: await encryptField(notebook.title),
+        }
+      }),
+    )
+    const notebooksToWrite = notebookUpdates.filter((notebook): notebook is Notebook => notebook !== null)
+    if (notebooksToWrite.length > 0) {
+      await db.notebooks.bulkPut(notebooksToWrite)
+    }
+
+    const pages = await db.pages.toArray()
+    const pageUpdates = await Promise.all(
+      pages.map(async (page) => {
+        const tagsField = page.tags[0] ?? ''
+        const alreadyEncrypted = isEncryptedField(page.title) && isEncryptedField(page.content) && isEncryptedField(tagsField)
+        if (alreadyEncrypted) {
+          return null
+        }
+        return {
+          ...page,
+          title: isEncryptedField(page.title) ? page.title : await encryptField(page.title),
+          content: isEncryptedField(page.content) ? page.content : await encryptField(page.content),
+          tags: [
+            isEncryptedField(tagsField)
+              ? tagsField
+              : await encryptField(JSON.stringify(page.tags)),
+          ],
+        }
+      }),
+    )
+    const pagesToWrite = pageUpdates.filter((page): page is Page => page !== null)
+    if (pagesToWrite.length > 0) {
+      await db.pages.bulkPut(pagesToWrite)
+    }
+  })
+}
+
+async function decryptPage(page: Page): Promise<Page> {
+  const tagsRaw = page.tags[0] ?? '[]'
+  const tagsJson = await decryptField(tagsRaw)
+  return {
+    ...page,
+    title: await decryptField(page.title),
+    content: await decryptField(page.content),
+    tags: parseTags(tagsJson),
+  }
+}
+
+function parseTags(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : []
+  } catch {
+    return []
+  }
 }
