@@ -83,7 +83,8 @@ function App() {
   async function bootstrap() {
     const localUser = await ensureUser()
     setUser(localUser)
-    setUnlocked(localUser.sessionConfig === null)
+    // Always show lock/setup screen on app entry.
+    setUnlocked(false)
     await refreshNotebooks()
   }
 
