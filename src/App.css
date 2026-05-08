@@ -720,6 +720,7 @@ textarea {
   border: 1px solid rgb(148 163 184 / 26%);
   border-radius: 12px;
   background: linear-gradient(180deg, rgb(15 23 42 / 95%), rgb(2 6 23 / 92%));
+  color: #e2e8f0;
   padding: 1rem;
   display: flex;
   flex-direction: column;
@@ -730,6 +731,7 @@ textarea {
 .secret-dialog h2 {
   margin: 0;
   font-size: 1rem;
+  color: #f8fafc;
 }
 
 .secret-visibility {
@@ -737,6 +739,7 @@ textarea {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.88rem;
+  color: #bfdbfe;
 }
 
 .secret-dialog-actions {
@@ -774,6 +777,7 @@ textarea {
   border: 1px solid rgb(148 163 184 / 28%);
   border-radius: 14px;
   background: linear-gradient(180deg, rgb(15 23 42 / 96%), rgb(2 6 23 / 92%));
+  color: #e2e8f0;
   padding: 1rem;
   display: grid;
   gap: 0.8rem;
@@ -784,6 +788,7 @@ textarea {
 .app-dialog h2 {
   margin: 0;
   font-size: 1rem;
+  color: #f8fafc;
 }
 
 .app-dialog p {
