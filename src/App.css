@@ -203,12 +203,7 @@
 .workspace-panel {
   flex: 1;
   min-width: 0;
-  display: flex;
-  gap: 0.85rem;
-}
-
-.workspace-pages {
-  width: 270px;
+  display: block;
 }
 
 .column {
@@ -397,6 +392,29 @@
 .editor {
   flex: 1;
   min-width: 0;
+}
+
+.master-detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.detail-pages-panel {
+  border: 1px solid rgb(148 163 184 / 20%);
+  border-radius: 10px;
+  background: rgb(2 6 23 / 40%);
+  padding: 0.55rem;
+}
+
+.detail-pages-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.45rem;
+}
+
+.detail-new-page {
+  margin-top: 0.55rem;
 }
 
 .editor-title,
@@ -648,7 +666,7 @@ textarea {
   }
 
   .workspace-panel {
-    flex-direction: column;
+    display: block;
   }
 
   .column {

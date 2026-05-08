@@ -634,73 +634,77 @@ function App() {
         ) : null}
 
         <section className="workspace-panel">
-          {!pagesHidden ? (
-            <aside className={`column pages workspace-pages${pagesCollapsed ? ' collapsed' : ''}`}>
-              {pagesCollapsed ? (
-                <button
-                  type="button"
-                  className="collapse-toggle collapsed-toggle"
-                  onClick={() => setPagesCollapsed(false)}
-                  aria-label="Expandir paginas"
-                  title="Expandir paginas"
-                >
-                  <span className="collapsed-label">Paginas</span>
-                  <span aria-hidden="true">›</span>
-                </button>
-              ) : (
-                <>
-                  <div className="column-title section-title">
-                    <div className="column-title-left">
-                      <button
-                        type="button"
-                        className="collapse-toggle"
-                        onClick={() => setPagesCollapsed(true)}
-                        aria-label="Colapsar paginas"
-                        title="Colapsar paginas"
-                      >
-                        <span aria-hidden="true">‹</span>
-                      </button>
-                      <h2>Paginas</h2>
+          <article className="column editor master-detail-main">
+            {!pagesHidden ? (
+              <section className="detail-pages-panel">
+                {pagesCollapsed ? (
+                  <button
+                    type="button"
+                    className="collapse-toggle collapsed-toggle"
+                    onClick={() => setPagesCollapsed(false)}
+                    aria-label="Expandir paginas"
+                    title="Expandir paginas"
+                  >
+                    <span className="collapsed-label">Paginas</span>
+                    <span aria-hidden="true">›</span>
+                  </button>
+                ) : (
+                  <>
+                    <div className="column-title section-title">
+                      <div className="column-title-left">
+                        <button
+                          type="button"
+                          className="collapse-toggle"
+                          onClick={() => setPagesCollapsed(true)}
+                          aria-label="Colapsar paginas"
+                          title="Colapsar paginas"
+                        >
+                          <span aria-hidden="true">‹</span>
+                        </button>
+                        <h2>Paginas</h2>
+                      </div>
                     </div>
-                  </div>
-                  {pages.map((page) => (
-                    <article key={page.id} className={`list-item-shell${page.id === selectedPageId ? ' active' : ''}`}>
-                      <button
-                        type="button"
-                        className={`list-item row-item${page.id === selectedPageId ? ' active' : ''}`}
-                        onClick={() => setSelectedPageId(page.id)}
-                      >
-                        <span className="item-main">
-                          <span className="item-icon" aria-hidden="true">📝</span>
-                          <span>{page.title}</span>
-                        </span>
-                        {selectedNotebook?.bookmarkPageId === page.id ? <small>Bookmark</small> : null}
-                      </button>
-                      <button
-                        type="button"
-                        className="item-menu-button"
-                        aria-label={`Acciones para ${page.title}`}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          setPageMenuId((value) => (value === page.id ? null : page.id))
-                        }}
-                      >
-                        ⋮
-                      </button>
-                      {pageMenuId === page.id ? (
-                        <div className="context-menu" onClick={(event) => event.stopPropagation()}>
-                          <button type="button" onClick={() => void handlePageDelete(page)}>Eliminar</button>
-                        </div>
-                      ) : null}
-                    </article>
-                  ))}
-                  <button type="button" className="new-item-button" onClick={handlePageCreate}>+ Nueva pagina</button>
-                </>
-              )}
-            </aside>
-          ) : null}
+                    <div className="detail-pages-list">
+                      {pages.map((page) => (
+                        <article key={page.id} className={`list-item-shell${page.id === selectedPageId ? ' active' : ''}`}>
+                          <button
+                            type="button"
+                            className={`list-item row-item${page.id === selectedPageId ? ' active' : ''}`}
+                            onClick={() => setSelectedPageId(page.id)}
+                          >
+                            <span className="item-main">
+                              <span className="item-icon" aria-hidden="true">📝</span>
+                              <span>{page.title}</span>
+                            </span>
+                            {selectedNotebook?.bookmarkPageId === page.id ? <small>Bookmark</small> : null}
+                          </button>
+                          <button
+                            type="button"
+                            className="item-menu-button"
+                            aria-label={`Acciones para ${page.title}`}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setPageMenuId((value) => (value === page.id ? null : page.id))
+                            }}
+                          >
+                            ⋮
+                          </button>
+                          {pageMenuId === page.id ? (
+                            <div className="context-menu" onClick={(event) => event.stopPropagation()}>
+                              <button type="button" onClick={() => void handlePageDelete(page)}>Eliminar</button>
+                            </div>
+                          ) : null}
+                        </article>
+                      ))}
+                    </div>
+                    <button type="button" className="new-item-button detail-new-page" onClick={handlePageCreate}>
+                      + Nueva pagina
+                    </button>
+                  </>
+                )}
+              </section>
+            ) : null}
 
-          <article className="column editor">
           {!selectedPage ? (
             <p>Selecciona una pagina para editar.</p>
           ) : (
