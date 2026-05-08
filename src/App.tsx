@@ -7,6 +7,8 @@ import {
   addAttachment,
   createNotebook,
   createPage,
+  deleteNotebook,
+  deletePage,
   deleteAttachment,
   ensureUser,
   exportBackupPayload,
@@ -43,6 +45,10 @@ function App() {
   const [backupStatusType, setBackupStatusType] = useState<'success' | 'error' | 'info'>('info')
   const [secretDialog, setSecretDialog] = useState<{ title: string; confirmLabel: string } | null>(null)
   const [secretInput, setSecretInput] = useState('')
+  const [secretVisible, setSecretVisible] = useState(false)
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const [notebooksHidden, setNotebooksHidden] = useState(false)
+  const [pagesHidden, setPagesHidden] = useState(false)
   const secretResolverRef = useRef<((value: string | null) => void) | null>(null)
 
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
@@ -163,6 +169,46 @@ function App() {
     const updated = { ...selectedNotebook, bookmarkPageId: pageId }
     await updateNotebook(updated)
     await refreshNotebooks()
+  }
+
+  async function handleNotebookRename() {
+    if (!selectedNotebook) {
+      return
+    }
+    const nextName = prompt('Nuevo nombre de la libreta', selectedNotebook.title)
+    if (nextName === null) {
+      return
+    }
+    const updated = { ...selectedNotebook, title: nextName.trim() || 'Nueva libreta' }
+    await updateNotebook(updated)
+    await refreshNotebooks()
+  }
+
+  async function handleNotebookDelete() {
+    if (!selectedNotebook) {
+      return
+    }
+    const confirmed = confirm(`Se eliminara la libreta "${selectedNotebook.title}" con sus paginas y adjuntos.`)
+    if (!confirmed) {
+      return
+    }
+    await deleteNotebook(selectedNotebook.id)
+    setSelectedPageId(null)
+    await refreshNotebooks()
+  }
+
+  async function handlePageDelete() {
+    if (!selectedPage) {
+      return
+    }
+    const confirmed = confirm(`Se eliminara la pagina "${selectedPage.title}" con sus adjuntos.`)
+    if (!confirmed) {
+      return
+    }
+    await deletePage(selectedPage.id)
+    if (selectedNotebookId) {
+      await refreshPages(selectedNotebookId)
+    }
   }
 
   async function handlePageFieldChange<K extends keyof Page>(key: K, value: Page[K]) {
@@ -354,6 +400,7 @@ function App() {
 
   function requestSecret(title: string, confirmLabel: string): Promise<string | null> {
     setSecretInput('')
+    setSecretVisible(false)
     setSecretDialog({ title, confirmLabel })
     return new Promise((resolve) => {
       secretResolverRef.current = resolve
@@ -362,9 +409,53 @@ function App() {
 
   function closeSecretDialog(value: string | null) {
     setSecretDialog(null)
+    setSecretVisible(false)
     const resolver = secretResolverRef.current
     secretResolverRef.current = null
     resolver?.(value)
+  }
+
+  function renderSecretDialog() {
+    if (!secretDialog) {
+      return null
+    }
+
+    return (
+      <section className="secret-dialog-backdrop" role="presentation">
+        <div className="secret-dialog" role="dialog" aria-modal="true" aria-label={secretDialog.title}>
+          <h2>{secretDialog.title}</h2>
+          <input
+            value={secretInput}
+            type={secretVisible ? 'text' : 'password'}
+            autoFocus
+            onChange={(event) => setSecretInput(event.target.value)}
+            placeholder="Escribe la clave"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                closeSecretDialog(secretInput.trim() || null)
+              }
+              if (event.key === 'Escape') {
+                closeSecretDialog(null)
+              }
+            }}
+          />
+          <label className="secret-visibility">
+            <input
+              type="checkbox"
+              checked={secretVisible}
+              onChange={(event) => setSecretVisible(event.target.checked)}
+            />
+            Mostrar clave
+          </label>
+          <div className="secret-dialog-actions">
+            <button type="button" onClick={() => closeSecretDialog(null)}>Cancelar</button>
+            <button type="button" onClick={() => closeSecretDialog(secretInput.trim() || null)}>
+              {secretDialog.confirmLabel}
+            </button>
+          </div>
+        </div>
+      </section>
+    )
   }
 
   if (!user) {
@@ -382,40 +473,18 @@ function App() {
             onChange={(event) => setPinInput(event.target.value)}
             placeholder="Escribe tu PIN"
             type="password"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                void (user.sessionConfig ? handleUnlock() : handleSetupPin())
+              }
+            }}
           />
           <button type="button" onClick={user.sessionConfig ? handleUnlock : handleSetupPin}>
             {user.sessionConfig ? 'Desbloquear' : 'Configurar PIN local'}
           </button>
           {pinError ? <p className="error">{pinError}</p> : null}
         </main>
-        {secretDialog ? (
-          <section className="secret-dialog-backdrop" role="presentation">
-            <div className="secret-dialog" role="dialog" aria-modal="true" aria-label={secretDialog.title}>
-              <h2>{secretDialog.title}</h2>
-              <input
-                value={secretInput}
-                type="password"
-                autoFocus
-                onChange={(event) => setSecretInput(event.target.value)}
-                placeholder="Escribe la clave"
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    closeSecretDialog(secretInput.trim() || null)
-                  }
-                  if (event.key === 'Escape') {
-                    closeSecretDialog(null)
-                  }
-                }}
-              />
-              <div className="secret-dialog-actions">
-                <button type="button" onClick={() => closeSecretDialog(null)}>Cancelar</button>
-                <button type="button" onClick={() => closeSecretDialog(secretInput.trim() || null)}>
-                  {secretDialog.confirmLabel}
-                </button>
-              </div>
-            </div>
-          </section>
-        ) : null}
+        {renderSecretDialog()}
       </>
     )
   }
@@ -431,9 +500,20 @@ function App() {
             value={searchTerm}
             onChange={(event) => handleSearch(event.target.value)}
           />
-          <button type="button" onClick={() => void handleExportEncryptedBackup()}>Exportar cifrado</button>
-          <button type="button" onClick={() => void handleImportEncryptedBackup()}>Importar cifrado</button>
+          <button type="button" onClick={() => setActionsOpen((value) => !value)}>Acciones</button>
         </header>
+        {actionsOpen ? (
+          <section className="actions-menu">
+            <button type="button" onClick={() => void handleExportEncryptedBackup()}>Exportar cifrado</button>
+            <button type="button" onClick={() => void handleImportEncryptedBackup()}>Importar cifrado</button>
+            <button type="button" onClick={() => setNotebooksHidden((value) => !value)}>
+              {notebooksHidden ? 'Mostrar barra de libretas' : 'Ocultar barra de libretas'}
+            </button>
+            <button type="button" onClick={() => setPagesHidden((value) => !value)}>
+              {pagesHidden ? 'Mostrar barra de paginas' : 'Ocultar barra de paginas'}
+            </button>
+          </section>
+        ) : null}
         {backupStatus ? <p className={`backup-status ${backupStatusType}`}>{backupStatus}</p> : null}
 
       {searchResults.length > 0 ? (
@@ -447,12 +527,12 @@ function App() {
         </section>
       ) : null}
 
-      <section
-        className="layout"
-        data-notebooks-collapsed={notebooksCollapsed ? 'true' : 'false'}
-        data-pages-collapsed={pagesCollapsed ? 'true' : 'false'}
-      >
-        <aside className={`column notebooks${notebooksCollapsed ? ' collapsed' : ''}`}>
+      <section className="layout">
+        {!notebooksHidden ? (
+          <aside
+            className={`column notebooks${notebooksCollapsed ? ' collapsed' : ''}`}
+            style={{ width: notebooksCollapsed ? '44px' : '240px' }}
+          >
           {notebooksCollapsed ? (
             <button
               type="button"
@@ -479,7 +559,13 @@ function App() {
                   </button>
                   <h2>Libretas</h2>
                 </div>
-                <button type="button" onClick={handleNotebookCreate}>+ Nueva</button>
+                <div className="column-actions">
+                  <button type="button" onClick={handleNotebookCreate}>+ Nueva</button>
+                  <button type="button" onClick={handleNotebookRename} disabled={!selectedNotebook}>Renombrar</button>
+                  <button type="button" onClick={() => void handleNotebookDelete()} disabled={!selectedNotebook}>
+                    Eliminar
+                  </button>
+                </div>
               </div>
               {notebooks.map((notebook) => (
                 <button
@@ -496,9 +582,14 @@ function App() {
               ))}
             </>
           )}
-        </aside>
+          </aside>
+        ) : null}
 
-        <aside className={`column pages${pagesCollapsed ? ' collapsed' : ''}`}>
+        {!pagesHidden ? (
+          <aside
+            className={`column pages${pagesCollapsed ? ' collapsed' : ''}`}
+            style={{ width: pagesCollapsed ? '44px' : '240px' }}
+          >
           {pagesCollapsed ? (
             <button
               type="button"
@@ -525,7 +616,12 @@ function App() {
                   </button>
                   <h2>Paginas</h2>
                 </div>
-                <button type="button" onClick={handlePageCreate}>+ Nueva</button>
+                <div className="column-actions">
+                  <button type="button" onClick={handlePageCreate}>+ Nueva</button>
+                  <button type="button" onClick={() => void handlePageDelete()} disabled={!selectedPage}>
+                    Eliminar
+                  </button>
+                </div>
               </div>
               {pages.map((page) => (
                 <button
@@ -540,7 +636,8 @@ function App() {
               ))}
             </>
           )}
-        </aside>
+          </aside>
+        ) : null}
 
         <article className="column editor">
           {!selectedPage ? (
@@ -623,34 +720,7 @@ function App() {
         </article>
       </section>
       </main>
-      {secretDialog ? (
-        <section className="secret-dialog-backdrop" role="presentation">
-          <div className="secret-dialog" role="dialog" aria-modal="true" aria-label={secretDialog.title}>
-            <h2>{secretDialog.title}</h2>
-            <input
-              value={secretInput}
-              type="password"
-              autoFocus
-              onChange={(event) => setSecretInput(event.target.value)}
-              placeholder="Escribe la clave"
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  closeSecretDialog(secretInput.trim() || null)
-                }
-                if (event.key === 'Escape') {
-                  closeSecretDialog(null)
-                }
-              }}
-            />
-            <div className="secret-dialog-actions">
-              <button type="button" onClick={() => closeSecretDialog(null)}>Cancelar</button>
-              <button type="button" onClick={() => closeSecretDialog(secretInput.trim() || null)}>
-                {secretDialog.confirmLabel}
-              </button>
-            </div>
-          </div>
-        </section>
-      ) : null}
+      {renderSecretDialog()}
     </>
   )
 }

@@ -120,6 +120,37 @@ export async function deleteAttachment(attachmentId: string): Promise<void> {
   await db.attachments.delete(attachmentId)
 }
 
+export async function deletePage(pageId: string): Promise<void> {
+  await db.transaction('rw', db.pages, db.attachments, db.notebooks, async () => {
+    const page = await db.pages.get(pageId)
+    if (!page) {
+      return
+    }
+    const notebook = await db.notebooks.get(page.notebookId)
+
+    await db.attachments.where('pageId').equals(pageId).delete()
+    await db.pages.delete(pageId)
+    await db.notebooks.update(page.notebookId, {
+      updatedAt: Date.now(),
+      bookmarkPageId: notebook?.bookmarkPageId === pageId ? null : notebook?.bookmarkPageId ?? null,
+    })
+  })
+}
+
+export async function deleteNotebook(notebookId: string): Promise<void> {
+  await db.transaction('rw', db.notebooks, db.pages, db.attachments, async () => {
+    const pages = await db.pages.where('notebookId').equals(notebookId).toArray()
+    const pageIds = pages.map((page) => page.id)
+
+    for (const pageId of pageIds) {
+      await db.attachments.where('pageId').equals(pageId).delete()
+    }
+
+    await db.pages.where('notebookId').equals(notebookId).delete()
+    await db.notebooks.delete(notebookId)
+  })
+}
+
 export async function exportBackupPayload(): Promise<BackupPayload> {
   const [users, notebooks, pages, attachments] = await Promise.all([
     db.users.toArray(),
