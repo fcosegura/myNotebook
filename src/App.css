@@ -1,0 +1,173 @@
+.app-shell {
+  min-height: 100vh;
+  color: #e5e7eb;
+  background: #0f172a;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.app-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.search-input {
+  flex: 1;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #111827;
+  color: #f8fafc;
+}
+
+.search-results {
+  margin-bottom: 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.search-results button {
+  border: 1px solid #334155;
+  background: #0b1220;
+  color: #d1d5db;
+  border-radius: 10px;
+  padding: 0.65rem;
+  text-align: left;
+}
+
+.search-results span {
+  display: block;
+  margin-top: 0.3rem;
+  opacity: 0.8;
+  font-size: 0.85rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 240px 240px 1fr;
+  gap: 1rem;
+}
+
+.column {
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: #111827;
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 70vh;
+}
+
+.column-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.column button {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.column button.active {
+  border-color: #818cf8;
+  background: #1f2142;
+}
+
+.pages button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.editor-title,
+textarea,
+.lock-screen input {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #020617;
+  color: #f8fafc;
+  padding: 0.6rem;
+}
+
+textarea {
+  flex: 1;
+  min-height: 260px;
+  resize: vertical;
+}
+
+.editor-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  font-size: 0.88rem;
+}
+
+.attachments {
+  margin-top: 0.5rem;
+}
+
+.attachment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.8rem;
+}
+
+.attachment-grid figure {
+  margin: 0;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0b1220;
+}
+
+.attachment-grid img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+}
+
+.attachment-grid figcaption {
+  padding: 0.45rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+}
+
+.lock-screen {
+  max-width: 420px;
+  margin: 4rem auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.error {
+  color: #fca5a5;
+}
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .column {
+    min-height: auto;
+  }
+}

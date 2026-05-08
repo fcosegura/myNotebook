@@ -1,0 +1,450 @@
+import { useEffect, useMemo, useState, type ClipboardEvent } from 'react'
+import './App.css'
+import type MiniSearch from 'minisearch'
+import type { Attachment, Notebook, Page, UserLocal } from './storage/db'
+import {
+  addAttachment,
+  createNotebook,
+  createPage,
+  deleteAttachment,
+  ensureUser,
+  listAllAttachments,
+  listAllPages,
+  listNotebooks,
+  listPagesByNotebook,
+  updateNotebook,
+  updatePage,
+  updateUser,
+} from './storage/repository'
+import { buildSearchIndex, querySearch, type SearchResult } from './features/search/search'
+import { createSalt, hashPin } from './features/session/session'
+
+function App() {
+  const [user, setUser] = useState<UserLocal | null>(null)
+  const [unlocked, setUnlocked] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState('')
+
+  const [notebooks, setNotebooks] = useState<Notebook[]>([])
+  const [pages, setPages] = useState<Page[]>([])
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+
+  const [selectedNotebookId, setSelectedNotebookId] = useState<string | null>(null)
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null)
+
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [pastingImage, setPastingImage] = useState(false)
+
+  useEffect(() => {
+    void bootstrap()
+  }, [])
+
+  const selectedNotebook = useMemo(
+    () => notebooks.find((notebook) => notebook.id === selectedNotebookId) ?? null,
+    [notebooks, selectedNotebookId],
+  )
+
+  const selectedPage = useMemo(
+    () => pages.find((page) => page.id === selectedPageId) ?? null,
+    [pages, selectedPageId],
+  )
+
+  const selectedPageAttachments = useMemo(
+    () => attachments.filter((attachment) => attachment.pageId === selectedPageId),
+    [attachments, selectedPageId],
+  )
+
+  async function bootstrap() {
+    const localUser = await ensureUser()
+    setUser(localUser)
+    setUnlocked(localUser.sessionConfig === null)
+    await refreshNotebooks()
+  }
+
+  async function refreshNotebooks() {
+    const allNotebooks = await listNotebooks()
+    setNotebooks(allNotebooks)
+
+    if (allNotebooks.length === 0) {
+      const notebook = await createNotebook('Mi libreta')
+      const refreshed = await listNotebooks()
+      setNotebooks(refreshed)
+      setSelectedNotebookId(notebook.id)
+      await refreshPages(notebook.id)
+      return
+    }
+
+    const notebookId = selectedNotebookId && allNotebooks.some((notebook) => notebook.id === selectedNotebookId)
+      ? selectedNotebookId
+      : allNotebooks[0].id
+    setSelectedNotebookId(notebookId)
+    await refreshPages(notebookId)
+  }
+
+  async function refreshPages(notebookId: string) {
+    const allPages = await listPagesByNotebook(notebookId)
+    setPages(allPages)
+    const allAttachments = await listAllAttachments()
+    setAttachments(allAttachments)
+
+    const nextPageId = selectedPageId && allPages.some((page) => page.id === selectedPageId)
+      ? selectedPageId
+      : allPages[0]?.id ?? null
+    setSelectedPageId(nextPageId)
+  }
+
+  async function handleNotebookCreate() {
+    const notebookName = prompt('Nombre de la libreta')
+    if (notebookName === null) {
+      return
+    }
+
+    const notebook = await createNotebook(notebookName)
+    await refreshNotebooks()
+    setSelectedNotebookId(notebook.id)
+    await refreshPages(notebook.id)
+  }
+
+  async function handlePageCreate() {
+    if (!selectedNotebookId) {
+      return
+    }
+
+    const pageName = prompt('Nombre de la pagina')
+    if (pageName === null) {
+      return
+    }
+
+    const page = await createPage(selectedNotebookId, pageName)
+    await refreshPages(selectedNotebookId)
+    setSelectedPageId(page.id)
+  }
+
+  async function handleNotebookBookmark(pageId: string) {
+    if (!selectedNotebook) {
+      return
+    }
+    const updated = { ...selectedNotebook, bookmarkPageId: pageId }
+    await updateNotebook(updated)
+    await refreshNotebooks()
+  }
+
+  async function handlePageFieldChange<K extends keyof Page>(key: K, value: Page[K]) {
+    if (!selectedPage) {
+      return
+    }
+    const updatedPage = { ...selectedPage, [key]: value }
+    await updatePage(updatedPage)
+    if (selectedNotebookId) {
+      await refreshPages(selectedNotebookId)
+    }
+  }
+
+  async function handleSetupPin() {
+    if (!user) {
+      return
+    }
+    if (pinInput.trim().length < 4) {
+      setPinError('El PIN necesita minimo 4 digitos.')
+      return
+    }
+    const salt = createSalt()
+    const hash = await hashPin(pinInput, salt)
+    const updatedUser = {
+      ...user,
+      sessionConfig: {
+        pinHash: hash,
+        salt,
+        iterations: 100_000,
+      },
+    }
+    await updateUser(updatedUser)
+    setUser(updatedUser)
+    setPinInput('')
+    setPinError('')
+    setUnlocked(true)
+  }
+
+  async function handleUnlock() {
+    if (!user?.sessionConfig) {
+      return
+    }
+    const hash = await hashPin(pinInput, user.sessionConfig.salt, user.sessionConfig.iterations)
+    if (hash !== user.sessionConfig.pinHash) {
+      setPinError('PIN incorrecto.')
+      return
+    }
+    setUnlocked(true)
+    setPinInput('')
+    setPinError('')
+  }
+
+  async function processImagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    if (!selectedPageId) {
+      return
+    }
+    const item = Array.from(event.clipboardData.items).find((entry) => entry.type.startsWith('image/'))
+    if (!item) {
+      return
+    }
+
+    event.preventDefault()
+    const file = item.getAsFile()
+    if (!file) {
+      return
+    }
+
+    setPastingImage(true)
+    try {
+      const processed = await downscaleImage(file)
+      await addAttachment(selectedPageId, processed.blob, processed.width, processed.height)
+      if (selectedNotebookId) {
+        await refreshPages(selectedNotebookId)
+      }
+    } finally {
+      setPastingImage(false)
+    }
+  }
+
+  function handleSearch(term: string) {
+    setSearchTerm(term)
+    if (!term.trim()) {
+      setSearchResults([])
+      return
+    }
+
+    void (async () => {
+      const allNotebooks = await listNotebooks()
+      const allPages = await listAllPages()
+      const index = buildSearchIndex(allNotebooks, allPages) as MiniSearch<{
+        id: string
+        notebookId: string
+        notebookTitle: string
+        pageTitle: string
+        content: string
+        tags: string
+        updatedAt: number
+      }>
+      setSearchResults(querySearch(index, term))
+    })()
+  }
+
+  async function openSearchResult(result: SearchResult) {
+    setSelectedNotebookId(result.notebookId)
+    await refreshPages(result.notebookId)
+    setSelectedPageId(result.pageId)
+  }
+
+  async function removeAttachment(attachmentId: string) {
+    await deleteAttachment(attachmentId)
+    if (selectedNotebookId) {
+      await refreshPages(selectedNotebookId)
+    }
+  }
+
+  if (!user) {
+    return <main className="app-shell">Inicializando...</main>
+  }
+
+  if (!unlocked) {
+    return (
+      <main className="app-shell lock-screen">
+        <h1>Libreta local</h1>
+        <p>Tu sesion se guarda solo en este navegador.</p>
+        <input
+          value={pinInput}
+          onChange={(event) => setPinInput(event.target.value)}
+          placeholder="Escribe tu PIN"
+          type="password"
+        />
+        <button type="button" onClick={user.sessionConfig ? handleUnlock : handleSetupPin}>
+          {user.sessionConfig ? 'Desbloquear' : 'Configurar PIN local'}
+        </button>
+        {pinError ? <p className="error">{pinError}</p> : null}
+      </main>
+    )
+  }
+
+  return (
+    <main className="app-shell">
+      <header className="app-header">
+        <h1>Libreta local</h1>
+        <input
+          className="search-input"
+          placeholder="Busqueda global inteligente..."
+          value={searchTerm}
+          onChange={(event) => handleSearch(event.target.value)}
+        />
+      </header>
+
+      {searchResults.length > 0 ? (
+        <section className="search-results">
+          {searchResults.map((result) => (
+            <button key={result.pageId} type="button" onClick={() => openSearchResult(result)}>
+              <strong>{result.pageTitle}</strong> en {result.notebookTitle}
+              <span>{result.snippet}</span>
+            </button>
+          ))}
+        </section>
+      ) : null}
+
+      <section className="layout">
+        <aside className="column notebooks">
+          <div className="column-title">
+            <h2>Libretas</h2>
+            <button type="button" onClick={handleNotebookCreate}>+ Nueva</button>
+          </div>
+          {notebooks.map((notebook) => (
+            <button
+              key={notebook.id}
+              type="button"
+              className={notebook.id === selectedNotebookId ? 'active' : ''}
+              onClick={() => {
+                setSelectedNotebookId(notebook.id)
+                void refreshPages(notebook.id)
+              }}
+            >
+              {notebook.title}
+            </button>
+          ))}
+        </aside>
+
+        <aside className="column pages">
+          <div className="column-title">
+            <h2>Paginas</h2>
+            <button type="button" onClick={handlePageCreate}>+ Nueva</button>
+          </div>
+          {pages.map((page) => (
+            <button
+              key={page.id}
+              type="button"
+              className={page.id === selectedPageId ? 'active' : ''}
+              onClick={() => setSelectedPageId(page.id)}
+            >
+              <span>{page.title}</span>
+              {selectedNotebook?.bookmarkPageId === page.id ? <small>Bookmark</small> : null}
+            </button>
+          ))}
+        </aside>
+
+        <article className="column editor">
+          {!selectedPage ? (
+            <p>Selecciona una pagina para editar.</p>
+          ) : (
+            <>
+              <input
+                className="editor-title"
+                value={selectedPage.title}
+                onChange={(event) => {
+                  void handlePageFieldChange('title', event.target.value)
+                }}
+              />
+              <div className="editor-actions">
+                <button type="button" onClick={() => handleNotebookBookmark(selectedPage.id)}>
+                  Marcar bookmark de libreta
+                </button>
+                <span>{pastingImage ? 'Procesando screenshot...' : 'Pega screenshot con Ctrl/Cmd + V'}</span>
+              </div>
+              <textarea
+                value={selectedPage.content}
+                onChange={(event) => {
+                  void handlePageFieldChange('content', event.target.value)
+                }}
+                onPaste={(event) => {
+                  void processImagePaste(event)
+                }}
+                placeholder="Escribe tu nota aqui. Puedes pegar imagenes desde portapapeles."
+              />
+              <section className="attachments">
+                <h3>Imagenes de la pagina</h3>
+                {selectedPageAttachments.length === 0 ? (
+                  <p>No hay imagenes todavia.</p>
+                ) : (
+                  <div className="attachment-grid">
+                    {selectedPageAttachments.map((attachment) => (
+                      <figure key={attachment.id}>
+                        <img src={URL.createObjectURL(attachment.blob)} alt="Adjunto pegado" />
+                        <figcaption>
+                          {(attachment.sizeBytes / 1024).toFixed(1)} KB
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void removeAttachment(attachment.id)
+                            }}
+                          >
+                            Eliminar
+                          </button>
+                        </figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+        </article>
+      </section>
+    </main>
+  )
+}
+
+export default App
+
+type ProcessedImage = {
+  blob: Blob
+  width: number
+  height: number
+}
+
+async function downscaleImage(file: File): Promise<ProcessedImage> {
+  const dataUrl = await readAsDataUrl(file)
+  const image = await loadImage(dataUrl)
+  const maxDimension = 1800
+
+  let width = image.width
+  let height = image.height
+
+  if (Math.max(width, height) > maxDimension) {
+    const ratio = maxDimension / Math.max(width, height)
+    width = Math.round(width * ratio)
+    height = Math.round(height * ratio)
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) {
+    throw new Error('No se pudo procesar la imagen.')
+  }
+
+  context.drawImage(image, 0, 0, width, height)
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, 'image/webp', 0.85)
+  })
+
+  return {
+    blob: blob ?? file,
+    width,
+    height,
+  }
+}
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('No se pudo leer la imagen del portapapeles.'))
+    image.src = src
+  })
+}
