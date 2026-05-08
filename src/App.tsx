@@ -30,6 +30,7 @@ import { createSalt, hashPin } from './features/session/session'
 import { lockVault, unlockVaultWithPin } from './features/session/vault'
 
 const BOOKMARK_TAG = 'bookmark'
+const INACTIVITY_AUTO_LOCK_MS = 5 * 60 * 1000
 
 function App() {
   const [user, setUser] = useState<UserLocal | null>(null)
@@ -38,6 +39,7 @@ function App() {
   const [pinError, setPinError] = useState('')
   const [unlockAttempts, setUnlockAttempts] = useState(0)
   const [unlockBlockedUntil, setUnlockBlockedUntil] = useState(0)
+  const inactivityTimerRef = useRef<number | null>(null)
 
   const [notebooks, setNotebooks] = useState<Notebook[]>([])
   const [pages, setPages] = useState<Page[]>([])
@@ -96,6 +98,52 @@ function App() {
       URL.revokeObjectURL(url)
     }
   }, [imageModalAttachment])
+
+  useEffect(() => {
+    if (!unlocked) {
+      if (inactivityTimerRef.current !== null) {
+        window.clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
+      }
+      return
+    }
+
+    const scheduleAutoLock = () => {
+      if (inactivityTimerRef.current !== null) {
+        window.clearTimeout(inactivityTimerRef.current)
+      }
+      inactivityTimerRef.current = window.setTimeout(() => {
+        lockVault()
+        setUnlocked(false)
+        setPinInput('')
+        setPinError('Sesion bloqueada por inactividad. Ingresa tu PIN.')
+      }, INACTIVITY_AUTO_LOCK_MS)
+    }
+
+    const handleActivity = () => {
+      scheduleAutoLock()
+    }
+
+    scheduleAutoLock()
+
+    window.addEventListener('pointerdown', handleActivity)
+    window.addEventListener('keydown', handleActivity)
+    window.addEventListener('mousemove', handleActivity)
+    window.addEventListener('touchstart', handleActivity, { passive: true })
+    window.addEventListener('scroll', handleActivity, { passive: true })
+
+    return () => {
+      window.removeEventListener('pointerdown', handleActivity)
+      window.removeEventListener('keydown', handleActivity)
+      window.removeEventListener('mousemove', handleActivity)
+      window.removeEventListener('touchstart', handleActivity)
+      window.removeEventListener('scroll', handleActivity)
+      if (inactivityTimerRef.current !== null) {
+        window.clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
+      }
+    }
+  }, [unlocked])
 
   const selectedNotebook = useMemo(
     () => notebooks.find((notebook) => notebook.id === selectedNotebookId) ?? null,
