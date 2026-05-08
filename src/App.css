@@ -575,7 +575,21 @@ textarea {
   margin-top: 0.5rem;
 }
 
+.attachments-content {
+  min-height: 138px;
+  display: flex;
+  align-items: flex-start;
+}
+
+.attachments-empty {
+  margin: 0;
+  color: #93c5fd;
+  opacity: 0.9;
+  padding-top: 0.25rem;
+}
+
 .attachment-grid {
+  width: 100%;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 0.8rem;

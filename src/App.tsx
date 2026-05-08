@@ -1043,43 +1043,45 @@ function App() {
               </nav>
               <section className="attachments">
                 <h3>Imagenes de la pagina</h3>
-                {selectedPageAttachments.length === 0 ? (
-                  <p>No hay imagenes todavia.</p>
-                ) : (
-                  <div className="attachment-grid">
-                    {selectedPageAttachments.map((attachment) => (
-                      <figure key={attachment.id}>
-                        <button
-                          type="button"
-                          className="attachment-preview-button"
-                          title="Abrir imagen"
-                          onClick={() => openAttachmentModal(attachment)}
-                        >
-                          <img src={URL.createObjectURL(attachment.blob)} alt={attachment.name ?? 'Adjunto pegado'} />
-                        </button>
-                        <figcaption>
-                          <div className="attachment-meta">
-                            <strong>{attachment.name ?? 'imagen-sin-nombre'}</strong>
-                            <small>{(attachment.sizeBytes / 1024).toFixed(1)} KB</small>
-                          </div>
-                          <div className="attachment-actions">
-                            <button type="button" onClick={() => void copyAttachmentReference(attachment)}>
-                              Copiar ref
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void removeAttachment(attachment.id)
-                              }}
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        </figcaption>
-                      </figure>
-                    ))}
-                  </div>
-                )}
+                <div className="attachments-content">
+                  {selectedPageAttachments.length === 0 ? (
+                    <p className="attachments-empty">No hay imagenes todavia.</p>
+                  ) : (
+                    <div className="attachment-grid">
+                      {selectedPageAttachments.map((attachment) => (
+                        <figure key={attachment.id}>
+                          <button
+                            type="button"
+                            className="attachment-preview-button"
+                            title="Abrir imagen"
+                            onClick={() => openAttachmentModal(attachment)}
+                          >
+                            <img src={URL.createObjectURL(attachment.blob)} alt={attachment.name ?? 'Adjunto pegado'} />
+                          </button>
+                          <figcaption>
+                            <div className="attachment-meta">
+                              <strong>{attachment.name ?? 'imagen-sin-nombre'}</strong>
+                              <small>{(attachment.sizeBytes / 1024).toFixed(1)} KB</small>
+                            </div>
+                            <div className="attachment-actions">
+                              <button type="button" onClick={() => void copyAttachmentReference(attachment)}>
+                                Copiar ref
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void removeAttachment(attachment.id)
+                                }}
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </figcaption>
+                        </figure>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </section>
             </>
           )}
