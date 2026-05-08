@@ -644,26 +644,45 @@ function App() {
                 }}
               />
               <div className="editor-actions">
-                <button type="button" onClick={() => handleNotebookBookmark(selectedPage.id)}>
-                  Marcar bookmark de libreta
-                </button>
-                {!pagesHidden ? (
-                  <select
-                    className="page-combo"
-                    value={selectedPageId ?? ''}
-                    onChange={(event) => setSelectedPageId(event.target.value)}
-                    aria-label="Seleccionar pagina"
-                  >
-                    {pages.map((page) => (
-                      <option key={page.id} value={page.id}>
-                        {page.title}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                <button type="button" onClick={handlePageCreate}>+ Nueva pagina</button>
-                <button type="button" onClick={() => void handlePageDelete()} disabled={!selectedPage}>Eliminar pagina</button>
-                <span>{pastingImage ? 'Procesando screenshot...' : 'Pega screenshot con Ctrl/Cmd + V'}</span>
+                <div className="editor-actions-group">
+                  <label className="editor-action-field">
+                    <span className="editor-action-label">Bookmark</span>
+                    <button type="button" onClick={() => handleNotebookBookmark(selectedPage.id)}>
+                      Marcar pagina actual
+                    </button>
+                  </label>
+                  {!pagesHidden ? (
+                    <label className="editor-action-field">
+                      <span className="editor-action-label">Pagina activa</span>
+                      <select
+                        className="page-combo"
+                        value={selectedPageId ?? ''}
+                        onChange={(event) => setSelectedPageId(event.target.value)}
+                        aria-label="Seleccionar pagina activa"
+                      >
+                        {pages.map((page) => (
+                          <option key={page.id} value={page.id}>
+                            {page.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
+                <div className="editor-actions-group">
+                  <label className="editor-action-field">
+                    <span className="editor-action-label">Gestion de paginas</span>
+                    <div className="editor-action-inline">
+                      <button type="button" onClick={handlePageCreate}>+ Nueva pagina</button>
+                      <button type="button" onClick={() => void handlePageDelete()} disabled={!selectedPage}>
+                        Eliminar pagina
+                      </button>
+                    </div>
+                  </label>
+                </div>
+                <span className="editor-help-text">
+                  {pastingImage ? 'Procesando screenshot...' : 'Tip: pega screenshot con Ctrl/Cmd + V'}
+                </span>
               </div>
               <textarea
                 value={selectedPage.content}

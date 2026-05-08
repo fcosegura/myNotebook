@@ -454,10 +454,47 @@ textarea {
 .editor-actions {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 0.8rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.9rem 1rem;
   font-size: 0.88rem;
   color: #93c5fd;
+  border: 1px solid rgb(148 163 184 / 16%);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  background: rgb(2 6 23 / 42%);
+}
+
+.editor-actions-group {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.7rem;
+}
+
+.editor-action-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  min-width: 150px;
+}
+
+.editor-action-label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #93c5fd;
+  opacity: 0.95;
+}
+
+.editor-action-inline {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+.editor-help-text {
+  margin-left: auto;
+  font-size: 0.82rem;
+  opacity: 0.92;
 }
 
 .page-combo {
@@ -651,6 +688,15 @@ textarea {
 .app-shell.compact .editor-title,
 .app-shell.compact textarea {
   padding: 0.45rem;
+}
+
+.app-shell.compact .editor-actions {
+  gap: 0.55rem 0.7rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.app-shell.compact .editor-action-label {
+  font-size: 0.68rem;
 }
 
 .app-shell.compact textarea {
