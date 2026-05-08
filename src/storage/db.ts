@@ -36,6 +36,7 @@ export type Page = {
 export type Attachment = {
   id: string
   pageId: string
+  name?: string
   mimeType: string
   sizeBytes: number
   width: number

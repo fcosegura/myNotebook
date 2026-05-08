@@ -276,7 +276,7 @@ function App() {
   }
 
   async function processImagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
-    if (!selectedPageId) {
+    if (!selectedPageId || !selectedPage) {
       return
     }
     const item = Array.from(event.clipboardData.items).find((entry) => entry.type.startsWith('image/'))
@@ -293,7 +293,20 @@ function App() {
     setPastingImage(true)
     try {
       const processed = await downscaleImage(file)
-      await addAttachment(selectedPageId, processed.blob, processed.width, processed.height)
+      const attachmentName = buildAttachmentName(selectedPageAttachments.length + 1)
+      const attachment = await addAttachment(
+        selectedPageId,
+        processed.blob,
+        processed.width,
+        processed.height,
+        attachmentName,
+      )
+      const referenceLine = `\n[img:${attachment.name ?? attachment.id}]`
+      const updatedPage = {
+        ...selectedPage,
+        content: `${selectedPage.content}${selectedPage.content.endsWith('\n') || !selectedPage.content ? '' : '\n'}${referenceLine.trimStart()}`,
+      }
+      await updatePage(updatedPage)
       if (selectedNotebookId) {
         await refreshPages(selectedNotebookId)
       }
@@ -335,6 +348,18 @@ function App() {
     await deleteAttachment(attachmentId)
     if (selectedNotebookId) {
       await refreshPages(selectedNotebookId)
+    }
+  }
+
+  async function copyAttachmentReference(attachment: Attachment) {
+    const token = `[img:${attachment.name ?? attachment.id}]`
+    try {
+      await navigator.clipboard.writeText(token)
+      setBackupStatus(`Referencia copiada: ${token}`)
+      setBackupStatusType('info')
+    } catch {
+      setBackupStatus(`No se pudo copiar automaticamente. Referencia: ${token}`)
+      setBackupStatusType('error')
     }
   }
 
@@ -725,17 +750,32 @@ function App() {
                   <div className="attachment-grid">
                     {selectedPageAttachments.map((attachment) => (
                       <figure key={attachment.id}>
-                        <img src={URL.createObjectURL(attachment.blob)} alt="Adjunto pegado" />
+                        <a
+                          href={URL.createObjectURL(attachment.blob)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Abrir imagen"
+                        >
+                          <img src={URL.createObjectURL(attachment.blob)} alt={attachment.name ?? 'Adjunto pegado'} />
+                        </a>
                         <figcaption>
-                          {(attachment.sizeBytes / 1024).toFixed(1)} KB
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void removeAttachment(attachment.id)
-                            }}
-                          >
-                            Eliminar
-                          </button>
+                          <div className="attachment-meta">
+                            <strong>{attachment.name ?? 'imagen-sin-nombre'}</strong>
+                            <small>{(attachment.sizeBytes / 1024).toFixed(1)} KB</small>
+                          </div>
+                          <div className="attachment-actions">
+                            <button type="button" onClick={() => void copyAttachmentReference(attachment)}>
+                              Copiar ref
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void removeAttachment(attachment.id)
+                              }}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
                         </figcaption>
                       </figure>
                     ))}
@@ -811,4 +851,10 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     image.onerror = () => reject(new Error('No se pudo leer la imagen del portapapeles.'))
     image.src = src
   })
+}
+
+function buildAttachmentName(index: number): string {
+  const now = new Date()
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+  return `img-${stamp}-${String(index).padStart(2, '0')}`
 }

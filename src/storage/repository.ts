@@ -101,10 +101,12 @@ export async function addAttachment(
   blob: Blob,
   width: number,
   height: number,
+  name?: string,
 ): Promise<Attachment> {
   const attachment: Attachment = {
     id: uuidv4(),
     pageId,
+    name,
     mimeType: blob.type || 'image/png',
     sizeBytes: blob.size,
     width,
