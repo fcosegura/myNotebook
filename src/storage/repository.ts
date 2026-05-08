@@ -96,6 +96,38 @@ export async function updatePage(page: Page): Promise<void> {
   await db.notebooks.update(page.notebookId, { updatedAt: page.updatedAt })
 }
 
+export async function movePageBefore(
+  notebookId: string,
+  pageId: string,
+  beforePageId: string | null,
+): Promise<void> {
+  await db.transaction('rw', db.pages, db.notebooks, async () => {
+    const pages = await db.pages.where('notebookId').equals(notebookId).sortBy('updatedAt')
+    const movingPage = pages.find((page) => page.id === pageId)
+    if (!movingPage) {
+      return
+    }
+
+    const remainingPages = pages.filter((page) => page.id !== pageId)
+    const targetIndex = beforePageId
+      ? remainingPages.findIndex((page) => page.id === beforePageId)
+      : remainingPages.length
+
+    const insertAt = targetIndex >= 0 ? targetIndex : remainingPages.length
+    const reordered = [...remainingPages]
+    reordered.splice(insertAt, 0, movingPage)
+
+    const base = Date.now()
+    for (let index = 0; index < reordered.length; index += 1) {
+      const page = reordered[index]
+      page.updatedAt = base + index
+    }
+
+    await db.pages.bulkPut(reordered)
+    await db.notebooks.update(notebookId, { updatedAt: base + reordered.length })
+  })
+}
+
 export async function addAttachment(
   pageId: string,
   blob: Blob,

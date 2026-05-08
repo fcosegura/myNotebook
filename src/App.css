@@ -758,6 +758,13 @@ textarea {
   line-height: 1.45;
 }
 
+.app-dialog-field {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #bfdbfe;
+}
+
 .app-dialog input {
   width: 100%;
   box-sizing: border-box;

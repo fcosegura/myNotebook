@@ -18,6 +18,7 @@ import {
   listAllPages,
   listNotebooks,
   listPagesByNotebook,
+  movePageBefore,
   updateNotebook,
   updatePage,
   updateUser,
@@ -48,6 +49,8 @@ function App() {
   const [secretVisible, setSecretVisible] = useState(false)
   const [appDialog, setAppDialog] = useState<AppDialogState | null>(null)
   const [appDialogInput, setAppDialogInput] = useState('')
+  const [movePageDialogOpen, setMovePageDialogOpen] = useState(false)
+  const [moveBeforePageId, setMoveBeforePageId] = useState<string>('')
   const [actionsOpen, setActionsOpen] = useState(false)
   const [notebooksHidden, setNotebooksHidden] = useState(false)
   const [pagesHidden, setPagesHidden] = useState(false)
@@ -268,6 +271,28 @@ function App() {
     if (selectedNotebookId) {
       await refreshPages(selectedNotebookId)
     }
+  }
+
+  function openMovePageDialog() {
+    if (!selectedPage) {
+      return
+    }
+    setMoveBeforePageId('')
+    setMovePageDialogOpen(true)
+  }
+
+  function closeMovePageDialog() {
+    setMovePageDialogOpen(false)
+    setMoveBeforePageId('')
+  }
+
+  async function handleMovePageConfirm() {
+    if (!selectedNotebookId || !selectedPage) {
+      return
+    }
+    await movePageBefore(selectedNotebookId, selectedPage.id, moveBeforePageId || null)
+    await refreshPages(selectedNotebookId)
+    closeMovePageDialog()
   }
 
   async function handlePageFieldChange<K extends keyof Page>(key: K, value: Page[K]) {
@@ -666,6 +691,48 @@ function App() {
     )
   }
 
+  function renderMovePageDialog() {
+    if (!movePageDialogOpen || !selectedPage) {
+      return null
+    }
+
+    const moveCandidates = pages.filter((page) => page.id !== selectedPage.id)
+
+    return (
+      <section className="app-dialog-backdrop" role="presentation">
+        <div className="app-dialog" role="dialog" aria-modal="true" aria-label="Mover pagina">
+          <h2>Mover pagina</h2>
+          <p>
+            Selecciona antes de que pagina quieres mover <strong>{selectedPage.title}</strong>.
+          </p>
+          <label className="app-dialog-field">
+            <span>Antes de la pagina</span>
+            <select
+              className="page-combo"
+              value={moveBeforePageId}
+              onChange={(event) => setMoveBeforePageId(event.target.value)}
+            >
+              <option value="">Al final</option>
+              {moveCandidates.map((page) => (
+                <option key={page.id} value={page.id}>
+                  {page.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="app-dialog-actions">
+            <button type="button" onClick={closeMovePageDialog}>
+              Cancelar
+            </button>
+            <button type="button" className="primary" onClick={() => void handleMovePageConfirm()}>
+              Mover
+            </button>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
   if (!user) {
     return <main className="app-shell">Inicializando...</main>
   }
@@ -694,6 +761,7 @@ function App() {
         </main>
         {renderSecretDialog()}
         {renderAppDialog()}
+        {renderMovePageDialog()}
       </>
     )
   }
@@ -869,6 +937,9 @@ function App() {
                     <span className="editor-action-label">Gestion de paginas</span>
                     <div className="editor-action-inline">
                       <button type="button" onClick={handlePageCreate}>+ Nueva pagina</button>
+                      <button type="button" onClick={openMovePageDialog} disabled={!selectedPage}>
+                        Mover
+                      </button>
                       <button type="button" onClick={() => void handlePageDelete()} disabled={!selectedPage}>
                         Eliminar pagina
                       </button>
@@ -960,6 +1031,7 @@ function App() {
       </main>
       {renderSecretDialog()}
       {renderAppDialog()}
+      {renderMovePageDialog()}
       {imageModalAttachment && imageModalUrl ? (
         <section className="image-modal-backdrop" role="presentation" onClick={closeAttachmentModal}>
           <figure className="image-modal" onClick={closeAttachmentModal}>
