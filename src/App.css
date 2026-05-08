@@ -18,6 +18,21 @@
   font-size: 1.4rem;
 }
 
+.app-header button {
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.app-header button:hover {
+  border-color: #818cf8;
+  background: #1f2142;
+}
+
 .search-input {
   flex: 1;
   padding: 0.55rem 0.7rem;
@@ -31,6 +46,12 @@
   margin-bottom: 1rem;
   display: grid;
   gap: 0.5rem;
+}
+
+.backup-status {
+  margin: -0.3rem 0 0.7rem;
+  font-size: 0.88rem;
+  color: #cbd5e1;
 }
 
 .search-results button {

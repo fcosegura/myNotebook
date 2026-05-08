@@ -1,5 +1,10 @@
 import { v4 as uuidv4 } from 'uuid'
 import { db, type Attachment, type Notebook, type Page, type UserLocal } from './db'
+import {
+  attachmentFromExport,
+  attachmentToExport,
+  type BackupPayload,
+} from '../features/backup/crypto'
 
 const DEFAULT_NOTEBOOK_COLOR = '#4f46e5'
 const USER_ID = 'local-user'
@@ -113,4 +118,43 @@ export async function addAttachment(
 
 export async function deleteAttachment(attachmentId: string): Promise<void> {
   await db.attachments.delete(attachmentId)
+}
+
+export async function exportBackupPayload(): Promise<BackupPayload> {
+  const [users, notebooks, pages, attachments] = await Promise.all([
+    db.users.toArray(),
+    db.notebooks.toArray(),
+    db.pages.toArray(),
+    db.attachments.toArray(),
+  ])
+
+  const attachmentExports = await Promise.all(attachments.map((attachment) => attachmentToExport(attachment)))
+
+  return {
+    version: 1,
+    exportedAt: Date.now(),
+    users,
+    notebooks,
+    pages,
+    attachments: attachmentExports,
+  }
+}
+
+export async function importBackupPayload(payload: BackupPayload): Promise<void> {
+  await db.transaction('rw', db.users, db.notebooks, db.pages, db.attachments, async () => {
+    await Promise.all([db.users.clear(), db.notebooks.clear(), db.pages.clear(), db.attachments.clear()])
+
+    if (payload.users.length > 0) {
+      await db.users.bulkPut(payload.users)
+    }
+    if (payload.notebooks.length > 0) {
+      await db.notebooks.bulkPut(payload.notebooks)
+    }
+    if (payload.pages.length > 0) {
+      await db.pages.bulkPut(payload.pages)
+    }
+    if (payload.attachments.length > 0) {
+      await db.attachments.bulkPut(payload.attachments.map((attachment) => attachmentFromExport(attachment)))
+    }
+  })
 }

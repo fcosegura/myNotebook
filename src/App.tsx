@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState, type ClipboardEvent } from 'react'
 import './App.css'
 import type MiniSearch from 'minisearch'
 import type { Attachment, Notebook, Page, UserLocal } from './storage/db'
+import { parseEncryptedBackup, serializeEncryptedBackup } from './features/backup/crypto'
 import {
   addAttachment,
   createNotebook,
   createPage,
   deleteAttachment,
   ensureUser,
+  exportBackupPayload,
+  importBackupPayload,
   listAllAttachments,
   listAllPages,
   listNotebooks,
@@ -35,6 +38,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [pastingImage, setPastingImage] = useState(false)
+  const [backupStatus, setBackupStatus] = useState('')
 
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
   const [pagesCollapsed, setPagesCollapsed] = useState(false)
@@ -269,6 +273,62 @@ function App() {
     }
   }
 
+  async function handleExportEncryptedBackup() {
+    const passphrase = prompt('Clave para cifrar backup')
+    if (!passphrase) {
+      return
+    }
+
+    try {
+      const payload = await exportBackupPayload()
+      const encrypted = await serializeEncryptedBackup(payload, passphrase)
+      const blob = new Blob([encrypted], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      const timestamp = new Date().toISOString().replaceAll(':', '-')
+      anchor.href = url
+      anchor.download = `local-notebook-${timestamp}.mynote.enc`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      setBackupStatus('Backup cifrado exportado.')
+    } catch (error) {
+      setBackupStatus((error as Error).message || 'No se pudo exportar el backup.')
+    }
+  }
+
+  async function handleImportEncryptedBackup() {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.enc,.mynote.enc,.json'
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) {
+        return
+      }
+
+      void (async () => {
+        const passphrase = prompt('Clave para descifrar backup')
+        if (!passphrase) {
+          return
+        }
+        const shouldOverwrite = confirm('Se reemplazaran los datos locales actuales. Deseas continuar?')
+        if (!shouldOverwrite) {
+          return
+        }
+        try {
+          const text = await file.text()
+          const payload = await parseEncryptedBackup(text, passphrase)
+          await importBackupPayload(payload)
+          await bootstrap()
+          setBackupStatus('Backup importado correctamente.')
+        } catch (error) {
+          setBackupStatus((error as Error).message || 'No se pudo importar el backup.')
+        }
+      })()
+    }
+    input.click()
+  }
+
   if (!user) {
     return <main className="app-shell">Inicializando...</main>
   }
@@ -302,7 +362,10 @@ function App() {
           value={searchTerm}
           onChange={(event) => handleSearch(event.target.value)}
         />
+        <button type="button" onClick={() => void handleExportEncryptedBackup()}>Exportar cifrado</button>
+        <button type="button" onClick={() => void handleImportEncryptedBackup()}>Importar cifrado</button>
       </header>
+      {backupStatus ? <p className="backup-status">{backupStatus}</p> : null}
 
       {searchResults.length > 0 ? (
         <section className="search-results">
