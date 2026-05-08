@@ -46,6 +46,8 @@ function App() {
   const [secretDialog, setSecretDialog] = useState<{ title: string; confirmLabel: string } | null>(null)
   const [secretInput, setSecretInput] = useState('')
   const [secretVisible, setSecretVisible] = useState(false)
+  const [appDialog, setAppDialog] = useState<AppDialogState | null>(null)
+  const [appDialogInput, setAppDialogInput] = useState('')
   const [actionsOpen, setActionsOpen] = useState(false)
   const [notebooksHidden, setNotebooksHidden] = useState(false)
   const [pagesHidden, setPagesHidden] = useState(false)
@@ -54,6 +56,7 @@ function App() {
   const [imageModalAttachment, setImageModalAttachment] = useState<Attachment | null>(null)
   const [imageModalUrl, setImageModalUrl] = useState<string | null>(null)
   const secretResolverRef = useRef<((value: string | null) => void) | null>(null)
+  const appDialogResolverRef = useRef<((value: unknown) => void) | null>(null)
 
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
 
@@ -161,7 +164,12 @@ function App() {
   }
 
   async function handleNotebookCreate() {
-    const notebookName = prompt('Nombre de la libreta')
+    const notebookName = await requestTextDialog({
+      title: 'Nueva libreta',
+      message: 'Elige un nombre para la libreta.',
+      confirmLabel: 'Crear',
+      placeholder: 'Nombre de la libreta',
+    })
     if (notebookName === null) {
       return
     }
@@ -177,7 +185,12 @@ function App() {
       return
     }
 
-    const pageName = prompt('Nombre de la pagina')
+    const pageName = await requestTextDialog({
+      title: 'Nueva pagina',
+      message: 'Escribe el nombre de la pagina.',
+      confirmLabel: 'Crear',
+      placeholder: 'Nombre de la pagina',
+    })
     if (pageName === null) {
       return
     }
@@ -201,7 +214,13 @@ function App() {
     if (!current) {
       return
     }
-    const nextName = prompt('Nuevo nombre de la libreta', current.title)
+    const nextName = await requestTextDialog({
+      title: 'Renombrar libreta',
+      message: 'Actualiza el nombre de la libreta.',
+      confirmLabel: 'Guardar',
+      placeholder: 'Nuevo nombre',
+      initialValue: current.title,
+    })
     if (nextName === null) {
       return
     }
@@ -215,7 +234,13 @@ function App() {
     if (!current) {
       return
     }
-    const confirmed = confirm(`Se eliminara la libreta "${current.title}" con sus paginas y adjuntos.`)
+    const confirmed = await requestConfirmDialog({
+      title: 'Eliminar libreta',
+      message: `Se eliminara la libreta "${current.title}" con sus paginas y adjuntos.`,
+      confirmLabel: 'Eliminar',
+      cancelLabel: 'Cancelar',
+      tone: 'danger',
+    })
     if (!confirmed) {
       return
     }
@@ -229,7 +254,13 @@ function App() {
     if (!current) {
       return
     }
-    const confirmed = confirm(`Se eliminara la pagina "${current.title}" con sus adjuntos.`)
+    const confirmed = await requestConfirmDialog({
+      title: 'Eliminar pagina',
+      message: `Se eliminara la pagina "${current.title}" con sus adjuntos.`,
+      confirmLabel: 'Eliminar',
+      cancelLabel: 'Cancelar',
+      tone: 'danger',
+    })
     if (!confirmed) {
       return
     }
@@ -407,7 +438,10 @@ function App() {
     } catch (error) {
       setBackupStatus((error as Error).message || 'No se pudo exportar el backup.')
       setBackupStatusType('error')
-      alert((error as Error).message || 'No se pudo exportar el backup.')
+      await requestAlertDialog({
+        title: 'Error al exportar',
+        message: (error as Error).message || 'No se pudo exportar el backup.',
+      })
     }
   }
 
@@ -430,9 +464,12 @@ function App() {
           setBackupStatusType('info')
           return
         }
-        const shouldOverwrite = confirm(
-          'Aceptar = reemplazar datos locales. Cancelar = intentar merge sin borrar lo actual.',
-        )
+        const shouldOverwrite = await requestConfirmDialog({
+          title: 'Modo de importacion',
+          message: 'Aceptar = reemplazar datos locales. Cancelar = intentar merge sin borrar lo actual.',
+          confirmLabel: 'Reemplazar',
+          cancelLabel: 'Merge',
+        })
         try {
           const text = await file.text()
           const payload = await parseEncryptedBackup(text, passphrase)
@@ -452,7 +489,10 @@ function App() {
           const message = (error as Error).message || 'No se pudo importar el backup.'
           setBackupStatus(`Error al importar: ${message}`)
           setBackupStatusType('error')
-          alert(`Error al importar backup: ${message}`)
+          await requestAlertDialog({
+            title: 'Error al importar backup',
+            message,
+          })
         }
       })()
     }
@@ -474,6 +514,113 @@ function App() {
     const resolver = secretResolverRef.current
     secretResolverRef.current = null
     resolver?.(value)
+  }
+
+  function requestTextDialog(config: TextDialogConfig): Promise<string | null> {
+    setAppDialogInput(config.initialValue ?? '')
+    setAppDialog({ ...config, kind: 'text' })
+    return new Promise((resolve) => {
+      appDialogResolverRef.current = resolve as (value: unknown) => void
+    })
+  }
+
+  function requestConfirmDialog(config: ConfirmDialogConfig): Promise<boolean> {
+    setAppDialogInput('')
+    setAppDialog({ ...config, kind: 'confirm' })
+    return new Promise((resolve) => {
+      appDialogResolverRef.current = resolve as (value: unknown) => void
+    })
+  }
+
+  async function requestAlertDialog(config: AlertDialogConfig): Promise<void> {
+    setAppDialogInput('')
+    setAppDialog({ ...config, kind: 'alert' })
+    await new Promise<void>((resolve) => {
+      appDialogResolverRef.current = () => resolve()
+    })
+  }
+
+  function closeAppDialog(value: string | boolean | null) {
+    setAppDialog(null)
+    setAppDialogInput('')
+    const resolver = appDialogResolverRef.current
+    appDialogResolverRef.current = null
+    resolver?.(value)
+  }
+
+  function renderAppDialog() {
+    if (!appDialog) {
+      return null
+    }
+
+    const toneClass = appDialog.tone === 'danger' ? 'danger' : 'neutral'
+    const message = appDialog.message ?? ''
+
+    if (appDialog.kind === 'alert') {
+      return (
+        <section className="app-dialog-backdrop" role="presentation">
+          <div className={`app-dialog ${toneClass}`} role="alertdialog" aria-modal="true" aria-label={appDialog.title}>
+            <h2>{appDialog.title}</h2>
+            {message ? <p>{message}</p> : null}
+            <div className="app-dialog-actions">
+              <button type="button" className="primary" onClick={() => closeAppDialog(true)}>
+                {appDialog.confirmLabel ?? 'Entendido'}
+              </button>
+            </div>
+          </div>
+        </section>
+      )
+    }
+
+    if (appDialog.kind === 'confirm') {
+      return (
+        <section className="app-dialog-backdrop" role="presentation">
+          <div className={`app-dialog ${toneClass}`} role="dialog" aria-modal="true" aria-label={appDialog.title}>
+            <h2>{appDialog.title}</h2>
+            {message ? <p>{message}</p> : null}
+            <div className="app-dialog-actions">
+              <button type="button" onClick={() => closeAppDialog(false)}>
+                {appDialog.cancelLabel ?? 'Cancelar'}
+              </button>
+              <button type="button" className="primary" onClick={() => closeAppDialog(true)}>
+                {appDialog.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </section>
+      )
+    }
+
+    return (
+      <section className="app-dialog-backdrop" role="presentation">
+        <div className={`app-dialog ${toneClass}`} role="dialog" aria-modal="true" aria-label={appDialog.title}>
+          <h2>{appDialog.title}</h2>
+          {message ? <p>{message}</p> : null}
+          <input
+            value={appDialogInput}
+            autoFocus
+            onChange={(event) => setAppDialogInput(event.target.value)}
+            placeholder={appDialog.placeholder ?? ''}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                closeAppDialog(appDialogInput.trim() || null)
+              }
+              if (event.key === 'Escape') {
+                closeAppDialog(null)
+              }
+            }}
+          />
+          <div className="app-dialog-actions">
+            <button type="button" onClick={() => closeAppDialog(null)}>
+              {appDialog.cancelLabel ?? 'Cancelar'}
+            </button>
+            <button type="button" className="primary" onClick={() => closeAppDialog(appDialogInput.trim() || null)}>
+              {appDialog.confirmLabel}
+            </button>
+          </div>
+        </div>
+      </section>
+    )
   }
 
   function renderSecretDialog() {
@@ -546,6 +693,7 @@ function App() {
           {pinError ? <p className="error">{pinError}</p> : null}
         </main>
         {renderSecretDialog()}
+        {renderAppDialog()}
       </>
     )
   }
@@ -811,6 +959,7 @@ function App() {
       </section>
       </main>
       {renderSecretDialog()}
+      {renderAppDialog()}
       {imageModalAttachment && imageModalUrl ? (
         <section className="image-modal-backdrop" role="presentation" onClick={closeAttachmentModal}>
           <figure className="image-modal" onClick={closeAttachmentModal}>
@@ -832,6 +981,58 @@ type ProcessedImage = {
   width: number
   height: number
 }
+
+type DialogTone = 'neutral' | 'danger'
+
+type BaseAppDialog = {
+  title: string
+  message?: string
+  confirmLabel?: string
+  cancelLabel?: string
+  tone?: DialogTone
+}
+
+type TextDialogConfig = {
+  title: string
+  message?: string
+  confirmLabel: string
+  cancelLabel?: string
+  placeholder?: string
+  initialValue?: string
+  tone?: DialogTone
+}
+
+type ConfirmDialogConfig = {
+  title: string
+  message?: string
+  confirmLabel: string
+  cancelLabel?: string
+  tone?: DialogTone
+}
+
+type AlertDialogConfig = {
+  title: string
+  message?: string
+  confirmLabel?: string
+  tone?: DialogTone
+}
+
+type TextAppDialog = BaseAppDialog & {
+  kind: 'text'
+  confirmLabel: string
+  placeholder?: string
+}
+
+type ConfirmAppDialog = BaseAppDialog & {
+  kind: 'confirm'
+  confirmLabel: string
+}
+
+type AlertAppDialog = BaseAppDialog & {
+  kind: 'alert'
+}
+
+type AppDialogState = TextAppDialog | ConfirmAppDialog | AlertAppDialog
 
 async function downscaleImage(file: File): Promise<ProcessedImage> {
   const dataUrl = await readAsDataUrl(file)
