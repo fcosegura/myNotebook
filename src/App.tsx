@@ -49,6 +49,7 @@ function App() {
   const [actionsOpen, setActionsOpen] = useState(false)
   const [notebooksHidden, setNotebooksHidden] = useState(false)
   const [pagesHidden, setPagesHidden] = useState(false)
+  const [densityMode, setDensityMode] = useState<'compact' | 'comfortable'>('comfortable')
   const secretResolverRef = useRef<((value: string | null) => void) | null>(null)
 
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
@@ -465,7 +466,7 @@ function App() {
   if (!unlocked) {
     return (
       <>
-        <main className="app-shell lock-screen">
+        <main className={`app-shell ${densityMode} lock-screen`}>
           <h1>Libreta local</h1>
           <p>Tu sesion se guarda solo en este navegador.</p>
           <input
@@ -491,7 +492,7 @@ function App() {
 
   return (
     <>
-      <main className="app-shell">
+      <main className={`app-shell ${densityMode}`}>
         <header className="app-header">
           <h1>Libreta local</h1>
           <input
@@ -500,7 +501,15 @@ function App() {
             value={searchTerm}
             onChange={(event) => handleSearch(event.target.value)}
           />
-          <button type="button" onClick={() => setActionsOpen((value) => !value)}>Acciones</button>
+          <div className="toolbar-group">
+            <button type="button" onClick={handleNotebookCreate} title="Nueva libreta">+ Libreta</button>
+            <button type="button" onClick={handlePageCreate} title="Nueva pagina" disabled={!selectedNotebookId}>
+              + Pagina
+            </button>
+          </div>
+          <button type="button" onClick={() => setActionsOpen((value) => !value)}>
+            Acciones {actionsOpen ? '▴' : '▾'}
+          </button>
         </header>
         {actionsOpen ? (
           <section className="actions-menu">
@@ -511,6 +520,12 @@ function App() {
             </button>
             <button type="button" onClick={() => setPagesHidden((value) => !value)}>
               {pagesHidden ? 'Mostrar barra de paginas' : 'Ocultar barra de paginas'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDensityMode((mode) => (mode === 'comfortable' ? 'compact' : 'comfortable'))}
+            >
+              {densityMode === 'comfortable' ? 'Usar modo compacto' : 'Usar modo comodo'}
             </button>
           </section>
         ) : null}
