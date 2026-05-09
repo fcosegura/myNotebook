@@ -483,9 +483,9 @@
   flex-direction: column;
   gap: 0.55rem;
   flex: 1 1 0;
-  min-height: 14rem;
+  min-height: 28rem;
   /* Techo claro para que 1fr/overflow funcionen aunque el padre flex no reparta alto bien */
-  max-height: min(62dvh, calc(100dvh - 13.5rem));
+  max-height: min(78dvh, calc(100dvh - 11rem));
   overflow: hidden;
 }
 
