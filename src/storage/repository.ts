@@ -293,68 +293,82 @@ export async function encryptExistingDataAtRest(): Promise<void> {
     return
   }
 
-  await db.transaction('rw', db.notebooks, db.pages, db.attachments, async () => {
-    const notebooks = await db.notebooks.toArray()
-    const notebookUpdates = await Promise.all(
-      notebooks.map(async (notebook) => {
-        if (isEncryptedField(notebook.title)) {
+  // Read + Web Crypto fuera de la transaccion IndexedDB: si await encrypt* ocurre
+  // dentro de db.transaction(), la transaccion se puede cerrar antes del bulkPut
+  // ("Transaction committed too early", ver Dexie docs).
+  const [notebooks, pages, attachments] = await Promise.all([
+    db.notebooks.toArray(),
+    db.pages.toArray(),
+    db.attachments.toArray(),
+  ])
+
+  const notebookUpdates = await Promise.all(
+    notebooks.map(async (notebook) => {
+      if (isEncryptedField(notebook.title)) {
+        return null
+      }
+      return {
+        ...notebook,
+        title: await encryptField(notebook.title),
+      }
+    }),
+  )
+  const notebooksToWrite = notebookUpdates.filter((notebook): notebook is Notebook => notebook !== null)
+
+  const pageUpdates = await Promise.all(
+    pages.map(async (page) => {
+      const tagsField = page.tags[0] ?? ''
+      const alreadyEncrypted =
+        isEncryptedField(page.title) && isEncryptedField(page.content) && isEncryptedField(tagsField)
+      if (alreadyEncrypted) {
+        return null
+      }
+      return {
+        ...page,
+        title: isEncryptedField(page.title) ? page.title : await encryptField(page.title),
+        content: isEncryptedField(page.content) ? page.content : await encryptField(page.content),
+        tags: [
+          isEncryptedField(tagsField) ? tagsField : await encryptField(JSON.stringify(page.tags)),
+        ],
+      }
+    }),
+  )
+  const pagesToWrite = pageUpdates.filter((page): page is Page => page !== null)
+
+  const attachmentUpdates = await Promise.all(
+    attachments.map(async (attachment) => {
+      try {
+        if (await isEncryptedBlob(attachment.blob)) {
           return null
         }
         return {
-          ...notebook,
-          title: await encryptField(notebook.title),
+          ...attachment,
+          blob: await encryptBlob(attachment.blob),
         }
-      }),
-    )
-    const notebooksToWrite = notebookUpdates.filter((notebook): notebook is Notebook => notebook !== null)
+      } catch {
+        return null
+      }
+    }),
+  )
+  const attachmentsToWrite = attachmentUpdates.filter(
+    (attachment): attachment is Attachment => attachment !== null,
+  )
+
+  if (
+    notebooksToWrite.length === 0 &&
+    pagesToWrite.length === 0 &&
+    attachmentsToWrite.length === 0
+  ) {
+    return
+  }
+
+  await db.transaction('rw', db.notebooks, db.pages, db.attachments, async () => {
     if (notebooksToWrite.length > 0) {
       await db.notebooks.bulkPut(notebooksToWrite)
     }
-
-    const pages = await db.pages.toArray()
-    const pageUpdates = await Promise.all(
-      pages.map(async (page) => {
-        const tagsField = page.tags[0] ?? ''
-        const alreadyEncrypted = isEncryptedField(page.title) && isEncryptedField(page.content) && isEncryptedField(tagsField)
-        if (alreadyEncrypted) {
-          return null
-        }
-        return {
-          ...page,
-          title: isEncryptedField(page.title) ? page.title : await encryptField(page.title),
-          content: isEncryptedField(page.content) ? page.content : await encryptField(page.content),
-          tags: [
-            isEncryptedField(tagsField)
-              ? tagsField
-              : await encryptField(JSON.stringify(page.tags)),
-          ],
-        }
-      }),
-    )
-    const pagesToWrite = pageUpdates.filter((page): page is Page => page !== null)
     if (pagesToWrite.length > 0) {
       await db.pages.bulkPut(pagesToWrite)
     }
-
-    const attachments = await db.attachments.toArray()
-    const attachmentUpdates = await Promise.all(
-      attachments.map(async (attachment) => {
-        try {
-          if (await isEncryptedBlob(attachment.blob)) {
-            return null
-          }
-          return {
-            ...attachment,
-            blob: await encryptBlob(attachment.blob),
-          }
-        } catch {
-          return null
-        }
-      }),
-    )
-    const attachmentsToWrite = attachmentUpdates.filter(
-      (attachment): attachment is Attachment => attachment !== null,
-    )
     if (attachmentsToWrite.length > 0) {
       await db.attachments.bulkPut(attachmentsToWrite)
     }
