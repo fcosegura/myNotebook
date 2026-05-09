@@ -425,7 +425,6 @@
 }
 
 .editor-title,
-textarea,
 .lock-screen input {
   width: 100%;
   box-sizing: border-box;
@@ -438,17 +437,78 @@ textarea,
 }
 
 .editor-title:focus,
-textarea:focus,
 .lock-screen input:focus {
   outline: none;
   border-color: rgb(129 140 248 / 80%);
   box-shadow: 0 0 0 3px rgb(99 102 241 / 18%);
 }
 
-textarea {
+.editor-richtext-shell {
+  border: 1px solid rgb(148 163 184 / 20%);
+  border-radius: 10px;
+  background: rgb(2 6 23 / 36%);
+  padding: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.editor-format-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.editor-format-toolbar button {
+  border: 1px solid rgb(148 163 184 / 26%);
+  border-radius: 8px;
+  background: rgb(2 6 23 / 72%);
+  color: #dbeafe;
+  padding: 0.35rem 0.6rem;
+}
+
+.editor-format-toolbar button:hover {
+  border-color: rgb(129 140 248 / 75%);
+}
+
+.editor-color-palette {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.2rem;
+}
+
+.color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px !important;
+  padding: 0 !important;
+  min-width: 20px;
+  border: 1px solid rgb(148 163 184 / 46%) !important;
+}
+
+.editor-richtext {
   flex: 1;
   min-height: 260px;
-  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid rgb(148 163 184 / 24%);
+  background: rgb(2 6 23 / 78%);
+  color: #f8fafc;
+  padding: 0.6rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.editor-richtext:focus {
+  outline: none;
+  border-color: rgb(129 140 248 / 80%);
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 18%);
+}
+
+.editor-richtext:empty::before {
+  content: attr(data-placeholder);
+  color: rgb(148 163 184 / 76%);
 }
 
 .editor-actions {
@@ -884,7 +944,7 @@ textarea {
 }
 
 .app-shell.compact .editor-title,
-.app-shell.compact textarea {
+.app-shell.compact .editor-richtext {
   padding: 0.45rem;
 }
 
@@ -897,7 +957,7 @@ textarea {
   font-size: 0.68rem;
 }
 
-.app-shell.compact textarea {
+.app-shell.compact .editor-richtext {
   min-height: 200px;
 }
 

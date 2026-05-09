@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent } from 'react'
 import './App.css'
 import type MiniSearch from 'minisearch'
 import type { Attachment, Notebook, Page, UserLocal } from './storage/db'
@@ -31,6 +31,7 @@ import { lockVault, unlockVaultWithPin } from './features/session/vault'
 
 const BOOKMARK_TAG = 'bookmark'
 const INACTIVITY_AUTO_LOCK_MS = 5 * 60 * 1000
+const TEXT_COLOR_PALETTE = ['#f8fafc', '#f87171', '#facc15', '#4ade80', '#60a5fa', '#c084fc', '#f472b6', '#fb923c']
 
 function App() {
   const [user, setUser] = useState<UserLocal | null>(null)
@@ -72,6 +73,8 @@ function App() {
   const appDialogResolverRef = useRef<((value: unknown) => void) | null>(null)
 
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
+  const editorRef = useRef<HTMLDivElement | null>(null)
+  const lastSyncedEditorHtmlRef = useRef<string>('')
 
   useEffect(() => {
     void bootstrap()
@@ -154,6 +157,17 @@ function App() {
     () => pages.find((page) => page.id === selectedPageId) ?? null,
     [pages, selectedPageId],
   )
+
+  useEffect(() => {
+    if (!selectedPage || !editorRef.current) {
+      return
+    }
+    if (lastSyncedEditorHtmlRef.current === selectedPage.content) {
+      return
+    }
+    editorRef.current.innerHTML = selectedPage.content || ''
+    lastSyncedEditorHtmlRef.current = selectedPage.content || ''
+  }, [selectedPage])
 
   const selectedPageAttachments = useMemo(
     () => attachments.filter((attachment) => attachment.pageId === selectedPageId),
@@ -511,7 +525,7 @@ function App() {
     setBackupStatusType('success')
   }
 
-  async function processImagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+  async function processImagePaste(event: ClipboardEvent<HTMLDivElement>) {
     if (!selectedPageId || !selectedPage) {
       return
     }
@@ -549,6 +563,32 @@ function App() {
     } finally {
       setPastingImage(false)
     }
+  }
+
+  function applyEditorCommand(command: 'underline' | 'strikeThrough' | 'foreColor', value?: string) {
+    if (!selectedPage || !editorRef.current) {
+      return
+    }
+    editorRef.current.focus()
+    document.execCommand(command, false, value)
+    const html = editorRef.current.innerHTML
+    if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
+      return
+    }
+    lastSyncedEditorHtmlRef.current = html
+    void handlePageFieldChange('content', html)
+  }
+
+  function handleEditorInput(event: FormEvent<HTMLDivElement>) {
+    if (!selectedPage) {
+      return
+    }
+    const html = event.currentTarget.innerHTML
+    if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
+      return
+    }
+    lastSyncedEditorHtmlRef.current = html
+    void handlePageFieldChange('content', html)
   }
 
   function handleSearch(term: string) {
@@ -1132,16 +1172,40 @@ function App() {
                   {pastingImage ? 'Procesando screenshot...' : 'Tip: pega screenshot con Ctrl/Cmd + V'}
                 </span>
               </div>
-              <textarea
-                value={selectedPage.content}
-                onChange={(event) => {
-                  void handlePageFieldChange('content', event.target.value)
-                }}
-                onPaste={(event) => {
-                  void processImagePaste(event)
-                }}
-                placeholder="Escribe tu nota aqui. Puedes pegar imagenes desde portapapeles."
-              />
+              <section className="editor-richtext-shell" aria-label="Editor de contenido enriquecido">
+                <div className="editor-format-toolbar">
+                  <button type="button" onClick={() => applyEditorCommand('underline')} title="Subrayado">
+                    Subrayado
+                  </button>
+                  <button type="button" onClick={() => applyEditorCommand('strikeThrough')} title="Tachado">
+                    Tachado
+                  </button>
+                  <div className="editor-color-palette" role="group" aria-label="Color del texto">
+                    {TEXT_COLOR_PALETTE.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        className="color-swatch"
+                        style={{ backgroundColor: color }}
+                        onClick={() => applyEditorCommand('foreColor', color)}
+                        title={`Color ${color}`}
+                        aria-label={`Aplicar color ${color}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div
+                  ref={editorRef}
+                  className="editor-richtext"
+                  contentEditable
+                  suppressContentEditableWarning
+                  data-placeholder="Escribe tu nota aqui. Puedes pegar imagenes desde portapapeles."
+                  onInput={handleEditorInput}
+                  onPaste={(event) => {
+                    void processImagePaste(event)
+                  }}
+                />
+              </section>
               <nav className="page-nav" aria-label="Navegacion entre paginas">
                 <button
                   type="button"
