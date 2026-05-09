@@ -42,6 +42,9 @@ const INACTIVITY_AUTO_LOCK_MS = 5 * 60 * 1000
 const TEXT_COLOR_PALETTE = ['#f8fafc', '#f87171', '#facc15', '#4ade80', '#60a5fa', '#c084fc', '#f472b6', '#fb923c']
 const FONT_SIZE_STEPS_PX = [12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32] as const
 const IMG_REF_IN_TEXT_PATTERN = /\[img:([^\]]+)\]/g
+const EDITOR_AUTO_LINK_CLASS = 'editor-auto-link'
+/** http(s) and www. URLs in plain text (not inside existing anchors). */
+const AUTO_LINK_URL_PATTERN = /\bhttps?:\/\/[^\s<>"')]+|\bwww\.[^\s<>"')]+/gi
 
 function App() {
   const [user, setUser] = useState<UserLocal | null>(null)
@@ -178,7 +181,7 @@ function App() {
       el.innerHTML = incoming
       lastSyncedEditorHtmlRef.current = incoming
     }
-    linkifyImgRefsInEditor(el)
+    linkifyEditorAutoLinks(el)
     const html = el.innerHTML
     if (html !== lastSyncedEditorHtmlRef.current) {
       lastSyncedEditorHtmlRef.current = html
@@ -588,7 +591,7 @@ function App() {
     }
     editorRef.current.focus()
     document.execCommand(command, false, value)
-    linkifyImgRefsInEditor(editorRef.current)
+    linkifyEditorAutoLinks(editorRef.current)
     const html = editorRef.current.innerHTML
     if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
       return
@@ -655,7 +658,7 @@ function App() {
     nextRange.collapse(false)
     selection.addRange(nextRange)
 
-    linkifyImgRefsInEditor(editor)
+    linkifyEditorAutoLinks(editor)
     const html = editor.innerHTML
     if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
       return
@@ -689,7 +692,7 @@ function App() {
       return
     }
     const el = event.currentTarget
-    linkifyImgRefsInEditor(el)
+    linkifyEditorAutoLinks(el)
     const html = el.innerHTML
     if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
       return
@@ -1447,6 +1450,89 @@ function App() {
 }
 
 export default App
+
+function linkifyEditorAutoLinks(root: HTMLElement) {
+  linkifyImgRefsInEditor(root)
+  linkifyUrlsInEditor(root)
+}
+
+function normalizeAutoLinkUrl(raw: string): { display: string; href: string; tail: string } {
+  const tailMatch = raw.match(/([.,;:!?)'»\]]+)$/u)
+  const tail = tailMatch?.[1] ?? ''
+  const display = tail ? raw.slice(0, -tail.length) : raw
+  let href = display
+  if (!/^https?:\/\//i.test(href)) {
+    href = `https://${href}`
+  }
+  return { display, href, tail }
+}
+
+/** Wrap plain URLs in non-editable anchors (opens in new tab). Skips text inside any `<a>`. */
+function linkifyUrlsInEditor(root: HTMLElement) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  let node: Node | null
+  while ((node = walker.nextNode())) {
+    if (!(node instanceof Text)) {
+      continue
+    }
+    const text = node.textContent ?? ''
+    if (!/\bhttps?:\/\/|\bwww\./i.test(text)) {
+      continue
+    }
+    let el: HTMLElement | null = node.parentElement
+    let insideAnchor = false
+    while (el && el !== root) {
+      if (el.tagName === 'A') {
+        insideAnchor = true
+        break
+      }
+      el = el.parentElement
+    }
+    if (!insideAnchor) {
+      textNodes.push(node)
+    }
+  }
+
+  for (const textNode of textNodes) {
+    const text = textNode.textContent ?? ''
+    AUTO_LINK_URL_PATTERN.lastIndex = 0
+    if (!AUTO_LINK_URL_PATTERN.test(text)) {
+      continue
+    }
+    AUTO_LINK_URL_PATTERN.lastIndex = 0
+    const frag = document.createDocumentFragment()
+    let lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = AUTO_LINK_URL_PATTERN.exec(text)) !== null) {
+      const raw = match[0]
+      const { display, href, tail } = normalizeAutoLinkUrl(raw)
+      if (!display) {
+        lastIndex = match.index + raw.length
+        continue
+      }
+      if (match.index > lastIndex) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)))
+      }
+      const anchor = document.createElement('a')
+      anchor.className = EDITOR_AUTO_LINK_CLASS
+      anchor.href = href
+      anchor.target = '_blank'
+      anchor.rel = 'noopener noreferrer'
+      anchor.setAttribute('contenteditable', 'false')
+      anchor.textContent = display
+      frag.appendChild(anchor)
+      if (tail) {
+        frag.appendChild(document.createTextNode(tail))
+      }
+      lastIndex = match.index + raw.length
+    }
+    if (lastIndex < text.length) {
+      frag.appendChild(document.createTextNode(text.slice(lastIndex)))
+    }
+    textNode.parentNode?.replaceChild(frag, textNode)
+  }
+}
 
 /** Wrap plain `[img:token]` text in non-editable links for preview + click to open modal. */
 function linkifyImgRefsInEditor(root: HTMLElement) {

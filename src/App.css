@@ -578,6 +578,17 @@
   color: #bae6fd;
 }
 
+.editor-richtext a.editor-auto-link {
+  color: #93c5fd;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.editor-richtext a.editor-auto-link:hover {
+  color: #bfdbfe;
+}
+
 .editor-actions {
   display: flex;
   justify-content: space-between;
