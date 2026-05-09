@@ -585,6 +585,19 @@ function App() {
     }
   }
 
+  function flushEditorContentFromDom(editor: HTMLDivElement) {
+    if (!selectedPage) {
+      return
+    }
+    linkifyEditorAutoLinks(editor)
+    const html = editor.innerHTML
+    if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
+      return
+    }
+    lastSyncedEditorHtmlRef.current = html
+    void handlePageFieldChange('content', html)
+  }
+
   function applyEditorCommand(
     command:
       | 'bold'
@@ -601,13 +614,25 @@ function App() {
     }
     editorRef.current.focus()
     document.execCommand(command, false, value)
-    linkifyEditorAutoLinks(editorRef.current)
-    const html = editorRef.current.innerHTML
-    if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
+    flushEditorContentFromDom(editorRef.current)
+  }
+
+  function applyEditorHistory(action: 'undo' | 'redo') {
+    if (!selectedPage || !editorRef.current) {
       return
     }
-    lastSyncedEditorHtmlRef.current = html
-    void handlePageFieldChange('content', html)
+    editorRef.current.focus()
+    document.execCommand(action, false)
+    flushEditorContentFromDom(editorRef.current)
+  }
+
+  function applyEditorBlockquote() {
+    if (!selectedPage || !editorRef.current) {
+      return
+    }
+    editorRef.current.focus()
+    document.execCommand('formatBlock', false, 'blockquote')
+    flushEditorContentFromDom(editorRef.current)
   }
 
   function getApproxFontSizePxFromRange(range: Range, editorRoot: HTMLElement): number {
@@ -672,13 +697,7 @@ function App() {
     nextRange.collapse(false)
     selection.addRange(nextRange)
 
-    linkifyEditorAutoLinks(editor)
-    const html = editor.innerHTML
-    if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
-      return
-    }
-    lastSyncedEditorHtmlRef.current = html
-    void handlePageFieldChange('content', html)
+    flushEditorContentFromDom(editor)
   }
 
   function handleEditorRichTextClick(event: MouseEvent<HTMLDivElement>) {
@@ -1298,6 +1317,24 @@ function App() {
               </div>
               <section className="editor-richtext-shell" aria-label="Editor de contenido enriquecido">
                 <div className="editor-format-toolbar">
+                  <div className="editor-history-group" role="group" aria-label="Deshacer y rehacer">
+                    <button
+                      type="button"
+                      onClick={() => applyEditorHistory('undo')}
+                      title="Deshacer (Ctrl/Cmd+Z)"
+                      aria-label="Deshacer"
+                    >
+                      Deshacer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyEditorHistory('redo')}
+                      title="Rehacer (Ctrl/Cmd+Shift+Z)"
+                      aria-label="Rehacer"
+                    >
+                      Rehacer
+                    </button>
+                  </div>
                   <div className="editor-font-size-group" role="group" aria-label="Tamano del texto">
                     <button
                       type="button"
@@ -1337,6 +1374,14 @@ function App() {
                     title="Lista numerada"
                   >
                     Numerada
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyEditorBlockquote}
+                    title="Parrafo como cita (blockquote)"
+                    aria-label="Aplicar cita al parrafo"
+                  >
+                    Cita
                   </button>
                   <button type="button" onClick={() => applyEditorCommand('underline')} title="Subrayado">
                     Subrayado
