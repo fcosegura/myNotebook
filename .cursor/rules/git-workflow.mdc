@@ -7,20 +7,27 @@ alwaysApply: true
 
 Cuando el usuario pida cambios de codigo, sigue este flujo SIEMPRE despues de aplicar las modificaciones, sin necesidad de pedir permiso adicional para los pasos de git.
 
-## Caso 1: el usuario dice "hotfix"
+## Caso 1: hotfix o fallo critico (merge directo a main)
 
-Si la peticion contiene la palabra `hotfix` (en mayusculas o minusculas), aplicar directo a `main`:
+Usar **merge directo en `main`** (sin branch ni PR) cuando ocurra **cualquiera** de estos casos:
+
+- La peticion contiene la palabra `hotfix` (mayusculas o minusculas), **o**
+- La peticion indica un **fallo critico** / bug bloqueante que debe corregirse ya en `main`: p. ej. palabras como `fallo critico`, `critico`, `critical`, `bloqueante`, o frases como *merge directo a main* / *directamente en main* aplicadas al arreglo.
+
+Pasos:
 
 1. `git checkout main` (si no estamos ya).
 2. `git pull --ff-only origin main` para evitar conflictos.
 3. `git add` de los archivos modificados.
-4. `git commit -m "hotfix: <mensaje>"`.
+4. `git commit -m "hotfix: <mensaje>"` (o `fix: <mensaje>` si encaja mejor, pero siempre un mensaje claro de correccion critica).
 5. `git push origin main`.
 6. NO crear branch ni PR. NO preguntar antes de hacer push.
 
+Si el arreglo ya esta en otra rama y solo hay que integrarlo, se puede hacer `git merge --ff-only <rama>` o `git cherry-pick` sobre `main` actualizado, luego `git push origin main`, siempre sin PR para este caso.
+
 ## Caso 2: cualquier otra peticion (default)
 
-Si NO se menciona `hotfix`:
+Si NO es hotfix ni fallo critico segun el Caso 1:
 
 1. Crear una branch nueva con nombre descriptivo en `kebab-case`, p. ej. `feat/ui-collapsible-columns` o `fix/page-nav-disabled`.
 2. `git add` + `git commit` con mensaje claro (estilo: `tipo: descripcion corta`).
