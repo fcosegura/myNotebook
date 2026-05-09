@@ -542,7 +542,7 @@
 .editor-actions {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 0.9rem 1rem;
   font-size: 0.88rem;
@@ -555,7 +555,7 @@
 
 .editor-actions-group {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 0.7rem;
 }
 
@@ -572,6 +572,9 @@
   letter-spacing: 0.04em;
   color: #93c5fd;
   opacity: 0.95;
+  /* Match horizontal inset of .column button / .page-combo so label lines up with control text */
+  padding: 0 0.5rem;
+  box-sizing: border-box;
 }
 
 .editor-action-inline {
@@ -581,6 +584,7 @@
 
 .editor-help-text {
   margin-left: auto;
+  align-self: center;
   font-size: 0.82rem;
   opacity: 0.92;
 }
