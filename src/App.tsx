@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type FormEvent,
+  type MouseEvent,
+} from 'react'
 import './App.css'
 import type MiniSearch from 'minisearch'
 import type { Attachment, Notebook, Page, UserLocal } from './storage/db'
@@ -33,6 +41,7 @@ const BOOKMARK_TAG = 'bookmark'
 const INACTIVITY_AUTO_LOCK_MS = 5 * 60 * 1000
 const TEXT_COLOR_PALETTE = ['#f8fafc', '#f87171', '#facc15', '#4ade80', '#60a5fa', '#c084fc', '#f472b6', '#fb923c']
 const FONT_SIZE_STEPS_PX = [12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32] as const
+const IMG_REF_IN_TEXT_PATTERN = /\[img:([^\]]+)\]/g
 
 function App() {
   const [user, setUser] = useState<UserLocal | null>(null)
@@ -163,11 +172,18 @@ function App() {
     if (!selectedPage || !editorRef.current) {
       return
     }
-    if (lastSyncedEditorHtmlRef.current === selectedPage.content) {
-      return
+    const el = editorRef.current
+    const incoming = selectedPage.content || ''
+    if (lastSyncedEditorHtmlRef.current !== incoming) {
+      el.innerHTML = incoming
+      lastSyncedEditorHtmlRef.current = incoming
     }
-    editorRef.current.innerHTML = selectedPage.content || ''
-    lastSyncedEditorHtmlRef.current = selectedPage.content || ''
+    linkifyImgRefsInEditor(el)
+    const html = el.innerHTML
+    if (html !== lastSyncedEditorHtmlRef.current) {
+      lastSyncedEditorHtmlRef.current = html
+      void handlePageFieldChange('content', html)
+    }
   }, [selectedPage])
 
   const selectedPageAttachments = useMemo(
@@ -572,6 +588,7 @@ function App() {
     }
     editorRef.current.focus()
     document.execCommand(command, false, value)
+    linkifyImgRefsInEditor(editorRef.current)
     const html = editorRef.current.innerHTML
     if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
       return
@@ -638,6 +655,7 @@ function App() {
     nextRange.collapse(false)
     selection.addRange(nextRange)
 
+    linkifyImgRefsInEditor(editor)
     const html = editor.innerHTML
     if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
       return
@@ -646,11 +664,33 @@ function App() {
     void handlePageFieldChange('content', html)
   }
 
+  function handleEditorRichTextClick(event: MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement | null
+    const link = target?.closest('a.editor-img-ref')
+    if (!link || !editorRef.current?.contains(link)) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const token = link.getAttribute('data-img-ref')
+    if (!token) {
+      return
+    }
+    const attachment = selectedPageAttachments.find(
+      (a) => (a.name ?? a.id) === token || a.id === token,
+    )
+    if (attachment) {
+      openAttachmentModal(attachment)
+    }
+  }
+
   function handleEditorInput(event: FormEvent<HTMLDivElement>) {
     if (!selectedPage) {
       return
     }
-    const html = event.currentTarget.innerHTML
+    const el = event.currentTarget
+    linkifyImgRefsInEditor(el)
+    const html = el.innerHTML
     if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
       return
     }
@@ -1288,6 +1328,7 @@ function App() {
                   suppressContentEditableWarning
                   data-placeholder="Escribe tu nota aqui. Puedes pegar imagenes desde portapapeles."
                   onInput={handleEditorInput}
+                  onClick={handleEditorRichTextClick}
                   onPaste={(event) => {
                     void processImagePaste(event)
                   }}
@@ -1406,6 +1447,59 @@ function App() {
 }
 
 export default App
+
+/** Wrap plain `[img:token]` text in non-editable links for preview + click to open modal. */
+function linkifyImgRefsInEditor(root: HTMLElement) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  let node: Node | null
+  while ((node = walker.nextNode())) {
+    if (node instanceof Text && node.textContent?.includes('[img:')) {
+      let el: HTMLElement | null = node.parentElement
+      let insideLink = false
+      while (el && el !== root) {
+        if (el.classList.contains('editor-img-ref')) {
+          insideLink = true
+          break
+        }
+        el = el.parentElement
+      }
+      if (!insideLink) {
+        textNodes.push(node)
+      }
+    }
+  }
+
+  for (const textNode of textNodes) {
+    const text = textNode.textContent ?? ''
+    IMG_REF_IN_TEXT_PATTERN.lastIndex = 0
+    if (!IMG_REF_IN_TEXT_PATTERN.test(text)) {
+      continue
+    }
+    IMG_REF_IN_TEXT_PATTERN.lastIndex = 0
+    const frag = document.createDocumentFragment()
+    let lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = IMG_REF_IN_TEXT_PATTERN.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)))
+      }
+      const token = match[1]
+      const anchor = document.createElement('a')
+      anchor.className = 'editor-img-ref'
+      anchor.href = '#'
+      anchor.dataset.imgRef = token
+      anchor.setAttribute('contenteditable', 'false')
+      anchor.textContent = `[img:${token}]`
+      frag.appendChild(anchor)
+      lastIndex = match.index + match[0].length
+    }
+    if (lastIndex < text.length) {
+      frag.appendChild(document.createTextNode(text.slice(lastIndex)))
+    }
+    textNode.parentNode?.replaceChild(frag, textNode)
+  }
+}
 
 type ProcessedImage = {
   blob: Blob
