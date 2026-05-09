@@ -472,6 +472,22 @@
   border-color: rgb(129 140 248 / 75%);
 }
 
+.editor-font-size-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-right: 0.15rem;
+}
+
+.editor-format-toolbar .font-size-step {
+  min-width: 2.25rem;
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: -0.02em;
+}
+
 .editor-color-palette {
   display: inline-flex;
   align-items: center;
