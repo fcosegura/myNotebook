@@ -1,0 +1,8 @@
+# Cloudflare Pages — despliegue estático (Vite → dist).
+# Dashboard: comando de build `npm run build`, directorio de salida `dist`.
+# CLI: `npm run deploy:cloudflare` (requiere `wrangler login` la primera vez).
+
+name = "mynotebook"
+compatibility_date = "2025-05-01"
+
+pages_build_output_dir = "dist"
