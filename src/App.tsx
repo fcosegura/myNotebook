@@ -42,6 +42,9 @@ const INACTIVITY_AUTO_LOCK_MS = 5 * 60 * 1000
 const TEXT_COLOR_PALETTE = ['#f8fafc', '#f87171', '#facc15', '#4ade80', '#60a5fa', '#c084fc', '#f472b6', '#fb923c']
 const FONT_SIZE_STEPS_PX = [12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32] as const
 const IMG_REF_IN_TEXT_PATTERN = /\[img:([^\]]+)\]/g
+const EDITOR_AUTO_LINK_CLASS = 'editor-auto-link'
+/** http(s) and www. URLs in plain text (not inside existing anchors). */
+const AUTO_LINK_URL_PATTERN = /\bhttps?:\/\/[^\s<>"')]+|\bwww\.[^\s<>"')]+/gi
 
 function App() {
   const [user, setUser] = useState<UserLocal | null>(null)
@@ -178,7 +181,7 @@ function App() {
       el.innerHTML = incoming
       lastSyncedEditorHtmlRef.current = incoming
     }
-    linkifyImgRefsInEditor(el)
+    linkifyEditorAutoLinks(el)
     const html = el.innerHTML
     if (html !== lastSyncedEditorHtmlRef.current) {
       lastSyncedEditorHtmlRef.current = html
@@ -582,19 +585,69 @@ function App() {
     }
   }
 
-  function applyEditorCommand(command: 'underline' | 'strikeThrough' | 'foreColor', value?: string) {
-    if (!selectedPage || !editorRef.current) {
+  function flushEditorContentFromDom(editor: HTMLDivElement) {
+    if (!selectedPage) {
       return
     }
-    editorRef.current.focus()
-    document.execCommand(command, false, value)
-    linkifyImgRefsInEditor(editorRef.current)
-    const html = editorRef.current.innerHTML
+    linkifyEditorAutoLinks(editor)
+    const html = editor.innerHTML
     if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
       return
     }
     lastSyncedEditorHtmlRef.current = html
     void handlePageFieldChange('content', html)
+  }
+
+  function applyEditorCommand(
+    command:
+      | 'bold'
+      | 'italic'
+      | 'underline'
+      | 'strikeThrough'
+      | 'foreColor'
+      | 'insertUnorderedList'
+      | 'insertOrderedList',
+    value?: string,
+  ) {
+    if (!selectedPage || !editorRef.current) {
+      return
+    }
+    editorRef.current.focus()
+    document.execCommand(command, false, value)
+    flushEditorContentFromDom(editorRef.current)
+  }
+
+  function applyEditorHistory(action: 'undo' | 'redo') {
+    if (!selectedPage || !editorRef.current) {
+      return
+    }
+    editorRef.current.focus()
+    document.execCommand(action, false)
+    flushEditorContentFromDom(editorRef.current)
+  }
+
+  function applyEditorBlockquote() {
+    if (!selectedPage || !editorRef.current) {
+      return
+    }
+    const editor = editorRef.current
+    editor.focus()
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      const existing = blockquoteContainingRange(editor, selection.getRangeAt(0))
+      if (existing) {
+        const marker = insertCaretMarkerBeforeCollapsed(selection.getRangeAt(0))
+        unwrapBlockquoteElement(existing)
+        if (marker?.isConnected) {
+          restoreCaretAtMarker(marker, selection)
+        }
+        editor.focus()
+        flushEditorContentFromDom(editor)
+        return
+      }
+    }
+    document.execCommand('formatBlock', false, 'blockquote')
+    flushEditorContentFromDom(editor)
   }
 
   function getApproxFontSizePxFromRange(range: Range, editorRoot: HTMLElement): number {
@@ -617,7 +670,8 @@ function App() {
     return Number.isNaN(fallback) ? 16 : fallback
   }
 
-  function applySelectionFontSizeStep(delta: -1 | 1) {
+  /** Mueve el tamano del texto seleccionado N escalones en la escala (p. ej. 3 con A+ / A−). */
+  function applySelectionFontSizeStep(stepDelta: number) {
     if (!selectedPage || !editorRef.current) {
       return
     }
@@ -638,7 +692,10 @@ function App() {
         bestIdx = i
       }
     }
-    const nextIdx = Math.max(0, Math.min(FONT_SIZE_STEPS_PX.length - 1, bestIdx + delta))
+    const nextIdx = Math.max(
+      0,
+      Math.min(FONT_SIZE_STEPS_PX.length - 1, bestIdx + stepDelta),
+    )
     const nextPx = FONT_SIZE_STEPS_PX[nextIdx]
     const span = document.createElement('span')
     span.style.fontSize = `${nextPx}px`
@@ -655,13 +712,7 @@ function App() {
     nextRange.collapse(false)
     selection.addRange(nextRange)
 
-    linkifyImgRefsInEditor(editor)
-    const html = editor.innerHTML
-    if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
-      return
-    }
-    lastSyncedEditorHtmlRef.current = html
-    void handlePageFieldChange('content', html)
+    flushEditorContentFromDom(editor)
   }
 
   function handleEditorRichTextClick(event: MouseEvent<HTMLDivElement>) {
@@ -689,7 +740,7 @@ function App() {
       return
     }
     const el = event.currentTarget
-    linkifyImgRefsInEditor(el)
+    linkifyEditorAutoLinks(el)
     const html = el.innerHTML
     if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
       return
@@ -1281,26 +1332,72 @@ function App() {
               </div>
               <section className="editor-richtext-shell" aria-label="Editor de contenido enriquecido">
                 <div className="editor-format-toolbar">
+                  <div className="editor-history-group" role="group" aria-label="Deshacer y rehacer">
+                    <button
+                      type="button"
+                      onClick={() => applyEditorHistory('undo')}
+                      title="Deshacer (Ctrl/Cmd+Z)"
+                      aria-label="Deshacer"
+                    >
+                      Deshacer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyEditorHistory('redo')}
+                      title="Rehacer (Ctrl/Cmd+Shift+Z)"
+                      aria-label="Rehacer"
+                    >
+                      Rehacer
+                    </button>
+                  </div>
                   <div className="editor-font-size-group" role="group" aria-label="Tamano del texto">
                     <button
                       type="button"
                       className="font-size-step"
-                      onClick={() => applySelectionFontSizeStep(-1)}
-                      title="Texto mas pequeno (selecciona texto)"
-                      aria-label="Reducir tamano del texto seleccionado"
+                      onClick={() => applySelectionFontSizeStep(-3)}
+                      title="Reducir 3 escalones de tamano (selecciona texto)"
+                      aria-label="Reducir tamano del texto tres escalones"
                     >
                       A−
                     </button>
                     <button
                       type="button"
                       className="font-size-step"
-                      onClick={() => applySelectionFontSizeStep(1)}
-                      title="Texto mas grande (selecciona texto)"
-                      aria-label="Aumentar tamano del texto seleccionado"
+                      onClick={() => applySelectionFontSizeStep(3)}
+                      title="Aumentar 3 escalones de tamano (selecciona texto)"
+                      aria-label="Aumentar tamano del texto tres escalones"
                     >
                       A+
                     </button>
                   </div>
+                  <button type="button" onClick={() => applyEditorCommand('bold')} title="Negrita (Ctrl/Cmd+B)">
+                    Negrita
+                  </button>
+                  <button type="button" onClick={() => applyEditorCommand('italic')} title="Cursiva (Ctrl/Cmd+I)">
+                    Cursiva
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyEditorCommand('insertUnorderedList')}
+                    title="Lista con viñetas"
+                  >
+                    Viñetas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyEditorCommand('insertOrderedList')}
+                    title="Lista numerada"
+                  >
+                    Numerada
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyEditorBlockquote}
+                    title="Cita: aplicar o quitar (si ya estas en cita)"
+                    aria-label="Alternar cita en el parrafo"
+                  >
+                    Cita
+                  </button>
                   <button type="button" onClick={() => applyEditorCommand('underline')} title="Subrayado">
                     Subrayado
                   </button>
@@ -1447,6 +1544,146 @@ function App() {
 }
 
 export default App
+
+function blockquoteContainingRange(root: HTMLElement, range: Range): HTMLElement | null {
+  let n: Node | null = range.commonAncestorContainer
+  if (n.nodeType === Node.TEXT_NODE) {
+    n = n.parentNode
+  }
+  while (n && n !== root) {
+    if (n.nodeName === 'BLOCKQUOTE') {
+      return n as HTMLElement
+    }
+    n = n.parentNode
+  }
+  return null
+}
+
+function unwrapBlockquoteElement(bq: HTMLElement) {
+  const parent = bq.parentNode
+  if (!parent) {
+    return
+  }
+  const fragment = document.createDocumentFragment()
+  while (bq.firstChild) {
+    fragment.appendChild(bq.firstChild)
+  }
+  parent.insertBefore(fragment, bq)
+  parent.removeChild(bq)
+}
+
+/** Marca el inicio del rango (colapsado) para restaurar el cursor tras cambios DOM. */
+function insertCaretMarkerBeforeCollapsed(range: Range): HTMLElement | null {
+  try {
+    const boundary = range.cloneRange()
+    boundary.collapse(true)
+    const marker = document.createElement('span')
+    marker.setAttribute('data-editor-caret-restore', '')
+    boundary.insertNode(marker)
+    return marker
+  } catch {
+    return null
+  }
+}
+
+function restoreCaretAtMarker(marker: HTMLElement, selection: Selection) {
+  const parent = marker.parentNode
+  if (!parent) {
+    marker.remove()
+    return
+  }
+  const idx = Array.prototype.indexOf.call(parent.childNodes, marker)
+  marker.remove()
+  const nextRange = document.createRange()
+  const safeIdx = Math.min(Math.max(0, idx), parent.childNodes.length)
+  nextRange.setStart(parent, safeIdx)
+  nextRange.collapse(true)
+  selection.removeAllRanges()
+  selection.addRange(nextRange)
+}
+
+function linkifyEditorAutoLinks(root: HTMLElement) {
+  linkifyImgRefsInEditor(root)
+  linkifyUrlsInEditor(root)
+}
+
+function normalizeAutoLinkUrl(raw: string): { display: string; href: string; tail: string } {
+  const tailMatch = raw.match(/([.,;:!?)'»\]]+)$/u)
+  const tail = tailMatch?.[1] ?? ''
+  const display = tail ? raw.slice(0, -tail.length) : raw
+  let href = display
+  if (!/^https?:\/\//i.test(href)) {
+    href = `https://${href}`
+  }
+  return { display, href, tail }
+}
+
+/** Wrap plain URLs in non-editable anchors (opens in new tab). Skips text inside any `<a>`. */
+function linkifyUrlsInEditor(root: HTMLElement) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  let node: Node | null
+  while ((node = walker.nextNode())) {
+    if (!(node instanceof Text)) {
+      continue
+    }
+    const text = node.textContent ?? ''
+    if (!/\bhttps?:\/\/|\bwww\./i.test(text)) {
+      continue
+    }
+    let el: HTMLElement | null = node.parentElement
+    let insideAnchor = false
+    while (el && el !== root) {
+      if (el.tagName === 'A') {
+        insideAnchor = true
+        break
+      }
+      el = el.parentElement
+    }
+    if (!insideAnchor) {
+      textNodes.push(node)
+    }
+  }
+
+  for (const textNode of textNodes) {
+    const text = textNode.textContent ?? ''
+    AUTO_LINK_URL_PATTERN.lastIndex = 0
+    if (!AUTO_LINK_URL_PATTERN.test(text)) {
+      continue
+    }
+    AUTO_LINK_URL_PATTERN.lastIndex = 0
+    const frag = document.createDocumentFragment()
+    let lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = AUTO_LINK_URL_PATTERN.exec(text)) !== null) {
+      const raw = match[0]
+      const { display, href, tail } = normalizeAutoLinkUrl(raw)
+      if (!display) {
+        lastIndex = match.index + raw.length
+        continue
+      }
+      if (match.index > lastIndex) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)))
+      }
+      const anchor = document.createElement('a')
+      anchor.className = EDITOR_AUTO_LINK_CLASS
+      anchor.href = href
+      anchor.target = '_blank'
+      anchor.rel = 'noopener noreferrer'
+      anchor.setAttribute('contenteditable', 'false')
+      anchor.textContent = display
+      frag.appendChild(anchor)
+      if (tail) {
+        frag.appendChild(document.createTextNode(tail))
+      }
+      lastIndex = match.index + raw.length
+    }
+    if (lastIndex < text.length) {
+      frag.appendChild(document.createTextNode(text.slice(lastIndex)))
+    }
+    textNode.parentNode?.replaceChild(frag, textNode)
+  }
+}
 
 /** Wrap plain `[img:token]` text in non-editable links for preview + click to open modal. */
 function linkifyImgRefsInEditor(root: HTMLElement) {
