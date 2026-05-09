@@ -32,6 +32,7 @@ import { lockVault, unlockVaultWithPin } from './features/session/vault'
 const BOOKMARK_TAG = 'bookmark'
 const INACTIVITY_AUTO_LOCK_MS = 5 * 60 * 1000
 const TEXT_COLOR_PALETTE = ['#f8fafc', '#f87171', '#facc15', '#4ade80', '#60a5fa', '#c084fc', '#f472b6', '#fb923c']
+const FONT_SIZE_STEPS_PX = [12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32] as const
 
 function App() {
   const [user, setUser] = useState<UserLocal | null>(null)
@@ -572,6 +573,72 @@ function App() {
     editorRef.current.focus()
     document.execCommand(command, false, value)
     const html = editorRef.current.innerHTML
+    if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
+      return
+    }
+    lastSyncedEditorHtmlRef.current = html
+    void handlePageFieldChange('content', html)
+  }
+
+  function getApproxFontSizePxFromRange(range: Range, editorRoot: HTMLElement): number {
+    let el: HTMLElement | null =
+      range.startContainer.nodeType === Node.TEXT_NODE
+        ? (range.startContainer.parentElement as HTMLElement | null)
+        : (range.startContainer as HTMLElement)
+    while (el && el !== editorRoot) {
+      const inline = el.style?.fontSize
+      if (inline) {
+        const parsed = parseFloat(inline)
+        if (!Number.isNaN(parsed)) {
+          return parsed
+        }
+      }
+      el = el.parentElement
+    }
+    const rootSize = window.getComputedStyle(editorRoot).fontSize
+    const fallback = parseFloat(rootSize)
+    return Number.isNaN(fallback) ? 16 : fallback
+  }
+
+  function applySelectionFontSizeStep(delta: -1 | 1) {
+    if (!selectedPage || !editorRef.current) {
+      return
+    }
+    const editor = editorRef.current
+    editor.focus()
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return
+    }
+    const range = selection.getRangeAt(0)
+    const currentPx = getApproxFontSizePxFromRange(range, editor)
+    let bestIdx = 0
+    let bestDiff = Infinity
+    for (let i = 0; i < FONT_SIZE_STEPS_PX.length; i++) {
+      const diff = Math.abs(FONT_SIZE_STEPS_PX[i] - currentPx)
+      if (diff < bestDiff) {
+        bestDiff = diff
+        bestIdx = i
+      }
+    }
+    const nextIdx = Math.max(0, Math.min(FONT_SIZE_STEPS_PX.length - 1, bestIdx + delta))
+    const nextPx = FONT_SIZE_STEPS_PX[nextIdx]
+    const span = document.createElement('span')
+    span.style.fontSize = `${nextPx}px`
+    try {
+      range.surroundContents(span)
+    } catch {
+      const fragment = range.extractContents()
+      span.appendChild(fragment)
+      range.insertNode(span)
+    }
+    selection.removeAllRanges()
+    const nextRange = document.createRange()
+    nextRange.selectNodeContents(span)
+    nextRange.collapse(false)
+    selection.addRange(nextRange)
+
+    const html = editor.innerHTML
     if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
       return
     }
@@ -1174,6 +1241,26 @@ function App() {
               </div>
               <section className="editor-richtext-shell" aria-label="Editor de contenido enriquecido">
                 <div className="editor-format-toolbar">
+                  <div className="editor-font-size-group" role="group" aria-label="Tamano del texto">
+                    <button
+                      type="button"
+                      className="font-size-step"
+                      onClick={() => applySelectionFontSizeStep(-1)}
+                      title="Texto mas pequeno (selecciona texto)"
+                      aria-label="Reducir tamano del texto seleccionado"
+                    >
+                      A−
+                    </button>
+                    <button
+                      type="button"
+                      className="font-size-step"
+                      onClick={() => applySelectionFontSizeStep(1)}
+                      title="Texto mas grande (selecciona texto)"
+                      aria-label="Aumentar tamano del texto seleccionado"
+                    >
+                      A+
+                    </button>
+                  </div>
                   <button type="button" onClick={() => applyEditorCommand('underline')} title="Subrayado">
                     Subrayado
                   </button>
