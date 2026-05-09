@@ -474,11 +474,12 @@
   border-radius: 10px;
   background: rgb(2 6 23 / 36%);
   padding: 0.55rem;
-  display: flex;
-  flex-direction: column;
+  /* Grid: toolbar tamano intrinseco; editor ocupa el resto con techo flex (scroll interno) */
+  display: grid;
+  grid-template-rows: auto minmax(12rem, 1fr);
   gap: 0.55rem;
-  flex: 1;
-  min-height: 12rem;
+  flex: 1 1 0;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -535,8 +536,8 @@
 }
 
 .editor-richtext {
-  flex: 1;
-  min-height: 10rem;
+  min-height: 0;
+  align-self: stretch;
   border-radius: 10px;
   border: 1px solid rgb(148 163 184 / 24%);
   background: rgb(2 6 23 / 78%);
