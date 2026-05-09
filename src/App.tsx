@@ -636,7 +636,12 @@ function App() {
     if (selection && selection.rangeCount > 0) {
       const existing = blockquoteContainingRange(editor, selection.getRangeAt(0))
       if (existing) {
+        const marker = insertCaretMarkerBeforeCollapsed(selection.getRangeAt(0))
         unwrapBlockquoteElement(existing)
+        if (marker?.isConnected) {
+          restoreCaretAtMarker(marker, selection)
+        }
+        editor.focus()
         flushEditorContentFromDom(editor)
         return
       }
@@ -1565,6 +1570,36 @@ function unwrapBlockquoteElement(bq: HTMLElement) {
   }
   parent.insertBefore(fragment, bq)
   parent.removeChild(bq)
+}
+
+/** Marca el inicio del rango (colapsado) para restaurar el cursor tras cambios DOM. */
+function insertCaretMarkerBeforeCollapsed(range: Range): HTMLElement | null {
+  try {
+    const boundary = range.cloneRange()
+    boundary.collapse(true)
+    const marker = document.createElement('span')
+    marker.setAttribute('data-editor-caret-restore', '')
+    boundary.insertNode(marker)
+    return marker
+  } catch {
+    return null
+  }
+}
+
+function restoreCaretAtMarker(marker: HTMLElement, selection: Selection) {
+  const parent = marker.parentNode
+  if (!parent) {
+    marker.remove()
+    return
+  }
+  const idx = Array.prototype.indexOf.call(parent.childNodes, marker)
+  marker.remove()
+  const nextRange = document.createRange()
+  const safeIdx = Math.min(Math.max(0, idx), parent.childNodes.length)
+  nextRange.setStart(parent, safeIdx)
+  nextRange.collapse(true)
+  selection.removeAllRanges()
+  selection.addRange(nextRange)
 }
 
 function linkifyEditorAutoLinks(root: HTMLElement) {
