@@ -527,6 +527,18 @@
   color: rgb(148 163 184 / 76%);
 }
 
+.editor-richtext a.editor-img-ref {
+  color: #7dd3fc;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.editor-richtext a.editor-img-ref:hover {
+  color: #bae6fd;
+}
+
 .editor-actions {
   display: flex;
   justify-content: space-between;
