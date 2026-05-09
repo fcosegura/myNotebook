@@ -630,9 +630,19 @@ function App() {
     if (!selectedPage || !editorRef.current) {
       return
     }
-    editorRef.current.focus()
+    const editor = editorRef.current
+    editor.focus()
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      const existing = blockquoteContainingRange(editor, selection.getRangeAt(0))
+      if (existing) {
+        unwrapBlockquoteElement(existing)
+        flushEditorContentFromDom(editor)
+        return
+      }
+    }
     document.execCommand('formatBlock', false, 'blockquote')
-    flushEditorContentFromDom(editorRef.current)
+    flushEditorContentFromDom(editor)
   }
 
   function getApproxFontSizePxFromRange(range: Range, editorRoot: HTMLElement): number {
@@ -1378,8 +1388,8 @@ function App() {
                   <button
                     type="button"
                     onClick={applyEditorBlockquote}
-                    title="Parrafo como cita (blockquote)"
-                    aria-label="Aplicar cita al parrafo"
+                    title="Cita: aplicar o quitar (si ya estas en cita)"
+                    aria-label="Alternar cita en el parrafo"
                   >
                     Cita
                   </button>
@@ -1529,6 +1539,33 @@ function App() {
 }
 
 export default App
+
+function blockquoteContainingRange(root: HTMLElement, range: Range): HTMLElement | null {
+  let n: Node | null = range.commonAncestorContainer
+  if (n.nodeType === Node.TEXT_NODE) {
+    n = n.parentNode
+  }
+  while (n && n !== root) {
+    if (n.nodeName === 'BLOCKQUOTE') {
+      return n as HTMLElement
+    }
+    n = n.parentNode
+  }
+  return null
+}
+
+function unwrapBlockquoteElement(bq: HTMLElement) {
+  const parent = bq.parentNode
+  if (!parent) {
+    return
+  }
+  const fragment = document.createDocumentFragment()
+  while (bq.firstChild) {
+    fragment.appendChild(bq.firstChild)
+  }
+  parent.insertBefore(fragment, bq)
+  parent.removeChild(bq)
+}
 
 function linkifyEditorAutoLinks(root: HTMLElement) {
   linkifyImgRefsInEditor(root)
