@@ -561,6 +561,16 @@
   box-shadow: 0 0 0 3px rgb(99 102 241 / 18%);
 }
 
+.editor-richtext ul,
+.editor-richtext ol {
+  margin: 0.4rem 0;
+  padding-left: 1.4rem;
+}
+
+.editor-richtext li {
+  margin: 0.2rem 0;
+}
+
 .editor-richtext:empty::before {
   content: attr(data-placeholder);
   color: rgb(148 163 184 / 76%);

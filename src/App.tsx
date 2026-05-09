@@ -585,7 +585,17 @@ function App() {
     }
   }
 
-  function applyEditorCommand(command: 'underline' | 'strikeThrough' | 'foreColor', value?: string) {
+  function applyEditorCommand(
+    command:
+      | 'bold'
+      | 'italic'
+      | 'underline'
+      | 'strikeThrough'
+      | 'foreColor'
+      | 'insertUnorderedList'
+      | 'insertOrderedList',
+    value?: string,
+  ) {
     if (!selectedPage || !editorRef.current) {
       return
     }
@@ -620,7 +630,8 @@ function App() {
     return Number.isNaN(fallback) ? 16 : fallback
   }
 
-  function applySelectionFontSizeStep(delta: -1 | 1) {
+  /** Mueve el tamano del texto seleccionado N escalones en la escala (p. ej. 3 con A+ / A−). */
+  function applySelectionFontSizeStep(stepDelta: number) {
     if (!selectedPage || !editorRef.current) {
       return
     }
@@ -641,7 +652,10 @@ function App() {
         bestIdx = i
       }
     }
-    const nextIdx = Math.max(0, Math.min(FONT_SIZE_STEPS_PX.length - 1, bestIdx + delta))
+    const nextIdx = Math.max(
+      0,
+      Math.min(FONT_SIZE_STEPS_PX.length - 1, bestIdx + stepDelta),
+    )
     const nextPx = FONT_SIZE_STEPS_PX[nextIdx]
     const span = document.createElement('span')
     span.style.fontSize = `${nextPx}px`
@@ -1288,22 +1302,42 @@ function App() {
                     <button
                       type="button"
                       className="font-size-step"
-                      onClick={() => applySelectionFontSizeStep(-1)}
-                      title="Texto mas pequeno (selecciona texto)"
-                      aria-label="Reducir tamano del texto seleccionado"
+                      onClick={() => applySelectionFontSizeStep(-3)}
+                      title="Reducir 3 escalones de tamano (selecciona texto)"
+                      aria-label="Reducir tamano del texto tres escalones"
                     >
                       A−
                     </button>
                     <button
                       type="button"
                       className="font-size-step"
-                      onClick={() => applySelectionFontSizeStep(1)}
-                      title="Texto mas grande (selecciona texto)"
-                      aria-label="Aumentar tamano del texto seleccionado"
+                      onClick={() => applySelectionFontSizeStep(3)}
+                      title="Aumentar 3 escalones de tamano (selecciona texto)"
+                      aria-label="Aumentar tamano del texto tres escalones"
                     >
                       A+
                     </button>
                   </div>
+                  <button type="button" onClick={() => applyEditorCommand('bold')} title="Negrita (Ctrl/Cmd+B)">
+                    Negrita
+                  </button>
+                  <button type="button" onClick={() => applyEditorCommand('italic')} title="Cursiva (Ctrl/Cmd+I)">
+                    Cursiva
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyEditorCommand('insertUnorderedList')}
+                    title="Lista con viñetas"
+                  >
+                    Viñetas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyEditorCommand('insertOrderedList')}
+                    title="Lista numerada"
+                  >
+                    Numerada
+                  </button>
                   <button type="button" onClick={() => applyEditorCommand('underline')} title="Subrayado">
                     Subrayado
                   </button>
