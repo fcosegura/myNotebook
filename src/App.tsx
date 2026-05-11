@@ -24,6 +24,8 @@ import {
   importBackupPayloadWithMode,
   encryptExistingDataAtRest,
   rotateEncryptionPin,
+  getPageById,
+  listAttachmentsByPage,
   listAllAttachments,
   listAllPages,
   listNotebooks,
@@ -88,10 +90,16 @@ function App() {
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
   const editorRef = useRef<HTMLDivElement | null>(null)
   const lastSyncedEditorHtmlRef = useRef<string>('')
+  const selectedNotebookIdRef = useRef<string | null>(null)
+  const pagePersistChainRef = useRef(Promise.resolve())
 
   useEffect(() => {
     void bootstrap()
   }, [])
+
+  useEffect(() => {
+    selectedNotebookIdRef.current = selectedNotebookId
+  }, [selectedNotebookId])
 
   useEffect(() => {
     function handleGlobalClick() {
@@ -306,16 +314,34 @@ function App() {
     setSelectedPageId(page.id)
   }
 
+  function enqueuePagePersist(task: () => Promise<void>): Promise<void> {
+    const prev = pagePersistChainRef.current
+    const next = prev.then(task).catch((error) => {
+      console.error('Persist page failed:', error)
+    })
+    pagePersistChainRef.current = next
+    return next
+  }
+
   async function handlePageBookmark() {
-    if (!selectedPage || !selectedNotebookId) {
+    if (!selectedPage) {
       return
     }
-    const hasBookmark = selectedPage.tags.includes(BOOKMARK_TAG)
-    const updatedTags = hasBookmark
-      ? selectedPage.tags.filter((tag) => tag !== BOOKMARK_TAG)
-      : [...selectedPage.tags, BOOKMARK_TAG]
-    await updatePage({ ...selectedPage, tags: updatedTags })
-    await refreshPages(selectedNotebookId)
+    const pageId = selectedPage.id
+    await enqueuePagePersist(async () => {
+      const fresh = await getPageById(pageId)
+      if (!fresh) {
+        return
+      }
+      const hasBookmark = fresh.tags.includes(BOOKMARK_TAG)
+      const updatedTags = hasBookmark
+        ? fresh.tags.filter((tag) => tag !== BOOKMARK_TAG)
+        : [...fresh.tags, BOOKMARK_TAG]
+      await updatePage({ ...fresh, tags: updatedTags })
+      if (selectedNotebookIdRef.current === fresh.notebookId) {
+        await refreshPages(fresh.notebookId)
+      }
+    })
   }
 
   async function handleNotebookRename(notebook?: Notebook) {
@@ -402,14 +428,20 @@ function App() {
   }
 
   async function handlePageFieldChange<K extends keyof Page>(key: K, value: Page[K]) {
-    if (!selectedPage) {
+    const pageId = selectedPage?.id
+    if (!pageId) {
       return
     }
-    const updatedPage = { ...selectedPage, [key]: value }
-    await updatePage(updatedPage)
-    if (selectedNotebookId) {
-      await refreshPages(selectedNotebookId)
-    }
+    await enqueuePagePersist(async () => {
+      const fresh = await getPageById(pageId)
+      if (!fresh) {
+        return
+      }
+      await updatePage({ ...fresh, [key]: value })
+      if (selectedNotebookIdRef.current === fresh.notebookId) {
+        await refreshPages(fresh.notebookId)
+      }
+    })
   }
 
   async function handleSetupPin() {
@@ -546,7 +578,7 @@ function App() {
   }
 
   async function processImagePaste(event: ClipboardEvent<HTMLDivElement>) {
-    if (!selectedPageId || !selectedPage) {
+    if (!selectedPageId) {
       return
     }
     const item = Array.from(event.clipboardData.items).find((entry) => entry.type.startsWith('image/'))
@@ -560,26 +592,31 @@ function App() {
       return
     }
 
+    const pageId = selectedPageId
     setPastingImage(true)
     try {
       const processed = await downscaleImage(file)
-      const attachmentName = buildAttachmentName(selectedPageAttachments.length + 1)
-      const attachment = await addAttachment(
-        selectedPageId,
-        processed.blob,
-        processed.width,
-        processed.height,
-        attachmentName,
-      )
-      const referenceLine = `\n[img:${attachment.name ?? attachment.id}]`
-      const updatedPage = {
-        ...selectedPage,
-        content: `${selectedPage.content}${selectedPage.content.endsWith('\n') || !selectedPage.content ? '' : '\n'}${referenceLine.trimStart()}`,
-      }
-      await updatePage(updatedPage)
-      if (selectedNotebookId) {
-        await refreshPages(selectedNotebookId)
-      }
+      await enqueuePagePersist(async () => {
+        const existingAttachments = await listAttachmentsByPage(pageId)
+        const attachmentName = buildAttachmentName(existingAttachments.length + 1)
+        const attachment = await addAttachment(
+          pageId,
+          processed.blob,
+          processed.width,
+          processed.height,
+          attachmentName,
+        )
+        const fresh = await getPageById(pageId)
+        if (!fresh) {
+          return
+        }
+        const referenceLine = `\n[img:${attachment.name ?? attachment.id}]`
+        const nextContent = `${fresh.content}${fresh.content.endsWith('\n') || !fresh.content ? '' : '\n'}${referenceLine.trimStart()}`
+        await updatePage({ ...fresh, content: nextContent })
+        if (selectedNotebookIdRef.current === fresh.notebookId) {
+          await refreshPages(fresh.notebookId)
+        }
+      })
     } finally {
       setPastingImage(false)
     }

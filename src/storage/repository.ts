@@ -60,6 +60,18 @@ export async function listPagesByNotebook(notebookId: string): Promise<Page[]> {
   return Promise.all(pages.map(decryptPage))
 }
 
+/** Pagina descifrada por id; sirve para fusionar escrituras sin estado React obsoleto. */
+export async function getPageById(pageId: string): Promise<Page | undefined> {
+  const page = await db.pages.get(pageId)
+  if (!page) {
+    return undefined
+  }
+  if (!isVaultUnlocked()) {
+    return page
+  }
+  return decryptPage(page)
+}
+
 export async function listAllPages(): Promise<Page[]> {
   const pages = await db.pages.toArray()
   if (!isVaultUnlocked()) {
