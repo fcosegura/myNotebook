@@ -48,6 +48,13 @@ const EDITOR_AUTO_LINK_CLASS = 'editor-auto-link'
 /** http(s) and www. URLs in plain text (not inside existing anchors). */
 const AUTO_LINK_URL_PATTERN = /\bhttps?:\/\/[^\s<>"')]+|\bwww\.[^\s<>"')]+/gi
 
+function formatLastSavedDisplay(ts: number): string {
+  return new Intl.DateTimeFormat('es', {
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  }).format(new Date(ts))
+}
+
 function App() {
   const [user, setUser] = useState<UserLocal | null>(null)
   const [unlocked, setUnlocked] = useState(false)
@@ -78,6 +85,7 @@ function App() {
   const [movePageDialogOpen, setMovePageDialogOpen] = useState(false)
   const [moveBeforePageId, setMoveBeforePageId] = useState<string>('')
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [notebooksHidden, setNotebooksHidden] = useState(false)
   const [pagesHidden, setPagesHidden] = useState(false)
   const [densityMode, setDensityMode] = useState<'compact' | 'comfortable'>('comfortable')
@@ -100,6 +108,10 @@ function App() {
   useEffect(() => {
     selectedNotebookIdRef.current = selectedNotebookId
   }, [selectedNotebookId])
+
+  function markDataSaved() {
+    setLastSavedAt(Date.now())
+  }
 
   useEffect(() => {
     function handleGlobalClick() {
@@ -250,6 +262,7 @@ function App() {
 
     if (allNotebooks.length === 0) {
       const notebook = await createNotebook('Mi libreta')
+      markDataSaved()
       const refreshed = await listNotebooks()
       setNotebooks(refreshed)
       setSelectedNotebookId(notebook.id)
@@ -292,6 +305,7 @@ function App() {
     await refreshNotebooks()
     setSelectedNotebookId(notebook.id)
     await refreshPages(notebook.id)
+    markDataSaved()
   }
 
   async function handlePageCreate() {
@@ -312,6 +326,7 @@ function App() {
     const page = await createPage(selectedNotebookId, pageName)
     await refreshPages(selectedNotebookId)
     setSelectedPageId(page.id)
+    markDataSaved()
   }
 
   function enqueuePagePersist(task: () => Promise<void>): Promise<void> {
@@ -338,6 +353,7 @@ function App() {
         ? fresh.tags.filter((tag) => tag !== BOOKMARK_TAG)
         : [...fresh.tags, BOOKMARK_TAG]
       await updatePage({ ...fresh, tags: updatedTags })
+      markDataSaved()
       if (selectedNotebookIdRef.current === fresh.notebookId) {
         await refreshPages(fresh.notebookId)
       }
@@ -362,6 +378,7 @@ function App() {
     const updated = { ...current, title: nextName.trim() || 'Nueva libreta' }
     await updateNotebook(updated)
     await refreshNotebooks()
+    markDataSaved()
   }
 
   async function handleNotebookDelete(notebook?: Notebook) {
@@ -382,6 +399,7 @@ function App() {
     await deleteNotebook(current.id)
     setSelectedPageId(null)
     await refreshNotebooks()
+    markDataSaved()
   }
 
   async function handlePageDelete(page?: Page) {
@@ -403,6 +421,7 @@ function App() {
     if (selectedNotebookId) {
       await refreshPages(selectedNotebookId)
     }
+    markDataSaved()
   }
 
   function openMovePageDialog() {
@@ -425,6 +444,7 @@ function App() {
     await movePageBefore(selectedNotebookId, selectedPage.id, moveBeforePageId || null)
     await refreshPages(selectedNotebookId)
     closeMovePageDialog()
+    markDataSaved()
   }
 
   async function handlePageFieldChange<K extends keyof Page>(key: K, value: Page[K]) {
@@ -438,6 +458,7 @@ function App() {
         return
       }
       await updatePage({ ...fresh, [key]: value })
+      markDataSaved()
       if (selectedNotebookIdRef.current === fresh.notebookId) {
         await refreshPages(fresh.notebookId)
       }
@@ -463,6 +484,7 @@ function App() {
       },
     }
     await updateUser(updatedUser)
+    markDataSaved()
     await unlockVaultWithPin(pinInput, salt, 100_000)
     setUser(updatedUser)
     await refreshNotebooks()
@@ -507,6 +529,7 @@ function App() {
         setBackupStatusType('error')
       }
       await refreshNotebooks()
+      markDataSaved()
     } catch (error) {
       setPinError((error as Error).message || 'No se pudo desbloquear la sesion.')
     }
@@ -573,6 +596,7 @@ function App() {
     }
     await updateUser(updatedUser)
     setUser(updatedUser)
+    markDataSaved()
     setBackupStatus('PIN actualizado y datos recifrados correctamente.')
     setBackupStatusType('success')
   }
@@ -613,6 +637,7 @@ function App() {
         const referenceLine = `\n[img:${attachment.name ?? attachment.id}]`
         const nextContent = `${fresh.content}${fresh.content.endsWith('\n') || !fresh.content ? '' : '\n'}${referenceLine.trimStart()}`
         await updatePage({ ...fresh, content: nextContent })
+        markDataSaved()
         if (selectedNotebookIdRef.current === fresh.notebookId) {
           await refreshPages(fresh.notebookId)
         }
@@ -830,6 +855,7 @@ function App() {
     if (selectedNotebookId) {
       await refreshPages(selectedNotebookId)
     }
+    markDataSaved()
   }
 
   async function copyAttachmentReference(attachment: Attachment) {
@@ -914,6 +940,7 @@ function App() {
           } else {
             await importBackupPayloadWithMode(payload, 'merge')
           }
+          markDataSaved()
           await bootstrap()
           setBackupStatus(
             shouldOverwrite
@@ -1203,6 +1230,18 @@ function App() {
         </header>
         {actionsOpen ? (
           <section className="actions-menu">
+            <p className="actions-menu-meta" role="status">
+              {lastSavedAt !== null ? (
+                <>
+                  Ultimo guardado local:{' '}
+                  <time dateTime={new Date(lastSavedAt).toISOString()}>
+                    {formatLastSavedDisplay(lastSavedAt)}
+                  </time>
+                </>
+              ) : (
+                'Aun no hay guardados en esta sesion.'
+              )}
+            </p>
             <button type="button" onClick={() => void handleExportEncryptedBackup()}>Exportar cifrado</button>
             <button type="button" onClick={() => void handleImportEncryptedBackup()}>Importar cifrado</button>
             <button type="button" onClick={() => void handlePinChange()}>Cambiar PIN</button>

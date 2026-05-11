@@ -131,6 +131,21 @@
   flex-shrink: 0;
 }
 
+.actions-menu-meta {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 0.35rem 0.45rem 0.5rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: rgb(186 198 216 / 95%);
+  border-bottom: 1px solid rgb(148 163 184 / 14%);
+}
+
+.actions-menu-meta time {
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
 .actions-menu button {
   border: 1px solid rgb(148 163 184 / 24%);
   border-radius: 8px;
