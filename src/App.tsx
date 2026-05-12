@@ -76,6 +76,7 @@ function App() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [pastingImage, setPastingImage] = useState(false)
   const [forceSavePending, setForceSavePending] = useState(false)
+  const [logoutPending, setLogoutPending] = useState(false)
   const [backupStatus, setBackupStatus] = useState('')
   const [backupStatusType, setBackupStatusType] = useState<'success' | 'error' | 'info'>('info')
   const [secretDialog, setSecretDialog] = useState<{ title: string; confirmLabel: string } | null>(null)
@@ -504,6 +505,34 @@ function App() {
   }
 
   forceSaveNoteRef.current = forceSaveNote
+
+  async function handleLogout() {
+    if (!unlocked) {
+      return
+    }
+    setLogoutPending(true)
+    try {
+      if (selectedPage && editorRef.current) {
+        await forceSaveNote()
+      }
+      await pagePersistChainRef.current
+      if (inactivityTimerRef.current !== null) {
+        window.clearTimeout(inactivityTimerRef.current)
+        inactivityTimerRef.current = null
+      }
+      lockVault()
+      setUnlocked(false)
+      setPinInput('')
+      setPinError('Sesion cerrada. Ingresa tu PIN para volver a ver tus notas.')
+      setActionsOpen(false)
+      setSearchTerm('')
+      setSearchResults([])
+      setBackupStatus('Sesion cerrada; tus notas siguen guardadas en este navegador.')
+      setBackupStatusType('info')
+    } finally {
+      setLogoutPending(false)
+    }
+  }
 
   useEffect(() => {
     if (!unlocked) {
@@ -1320,6 +1349,15 @@ function App() {
               onClick={() => setDensityMode((mode) => (mode === 'comfortable' ? 'compact' : 'comfortable'))}
             >
               {densityMode === 'comfortable' ? 'Usar modo compacto' : 'Usar modo comodo'}
+            </button>
+            <button
+              type="button"
+              className="actions-logout-button"
+              disabled={logoutPending || forceSavePending || pastingImage}
+              onClick={() => void handleLogout()}
+              title="Guarda la nota actual, bloquea la sesion y vuelve al PIN (los datos quedan en este dispositivo)"
+            >
+              {logoutPending ? 'Cerrando sesion...' : 'Cerrar sesion'}
             </button>
           </section>
         ) : null}

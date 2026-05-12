@@ -161,6 +161,26 @@
   color: #e0f2fe;
 }
 
+.actions-menu button.actions-logout-button {
+  flex: 1 0 100%;
+  margin-top: 0.25rem;
+  border: 1px solid rgb(248 113 113 / 45%);
+  background: linear-gradient(180deg, rgb(69 10 10 / 45%), rgb(30 6 8 / 72%));
+  color: #fecaca;
+  font-weight: 600;
+}
+
+.actions-menu button.actions-logout-button:hover:not(:disabled) {
+  border-color: rgb(252 165 165 / 75%);
+  color: #fecaca;
+  box-shadow: 0 4px 14px rgb(220 38 38 / 18%);
+}
+
+.actions-menu button.actions-logout-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .backup-status {
   margin: -0.1rem 0 0.75rem;
   font-size: 0.88rem;
