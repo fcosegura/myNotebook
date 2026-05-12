@@ -491,7 +491,7 @@
 }
 
 .editor-title,
-.lock-screen input {
+.lock-screen .pin-display {
   width: 100%;
   box-sizing: border-box;
   border-radius: 10px;
@@ -503,7 +503,7 @@
 }
 
 .editor-title:focus,
-.lock-screen input:focus {
+.lock-screen .pin-display:focus-within {
   outline: none;
   border-color: rgb(129 140 248 / 80%);
   box-shadow: 0 0 0 3px rgb(99 102 241 / 18%);
@@ -923,6 +923,68 @@
   backdrop-filter: blur(10px);
   padding: 1.1rem;
   animation: fade-slide-in 0.22s ease;
+}
+
+.pin-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.lock-screen .pin-display {
+  min-height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.12em;
+}
+
+.pin-display-dots {
+  font-size: 1.35rem;
+  line-height: 1;
+  color: #e2e8f0;
+}
+
+.pin-display-placeholder {
+  font-size: 0.82rem;
+  color: rgb(148 163 184 / 85%);
+  letter-spacing: normal;
+  text-align: center;
+  line-height: 1.35;
+}
+
+.pin-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45rem;
+}
+
+.pin-key {
+  border: 1px solid rgb(148 163 184 / 28%);
+  border-radius: 10px;
+  background: rgb(2 6 23 / 72%);
+  color: #dbeafe;
+  min-height: 2.75rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  padding: 0.45rem;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.pin-key:hover {
+  border-color: rgb(129 140 248 / 75%);
+  background: rgb(30 41 59 / 55%);
+}
+
+.pin-key:active {
+  background: rgb(51 65 85 / 45%);
+}
+
+.pin-key-wide {
+  grid-column: span 2;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .error {
