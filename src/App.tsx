@@ -93,7 +93,12 @@ function App() {
   const [densityMode, setDensityMode] = useState<'compact' | 'comfortable'>('comfortable')
   const [notebookMenuId, setNotebookMenuId] = useState<string | null>(null)
   const [imageModalAttachment, setImageModalAttachment] = useState<Attachment | null>(null)
-  const [imageModalUrl, setImageModalUrl] = useState<string | null>(null)
+  const imageModalUrl = useMemo(() => {
+    if (!imageModalAttachment) {
+      return null
+    }
+    return URL.createObjectURL(imageModalAttachment.blob)
+  }, [imageModalAttachment])
   const secretResolverRef = useRef<((value: string | null) => void) | null>(null)
   const appDialogResolverRef = useRef<((value: unknown) => void) | null>(null)
 
@@ -130,16 +135,13 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!imageModalAttachment) {
-      setImageModalUrl(null)
+    if (!imageModalUrl) {
       return
     }
-    const url = URL.createObjectURL(imageModalAttachment.blob)
-    setImageModalUrl(url)
     return () => {
-      URL.revokeObjectURL(url)
+      URL.revokeObjectURL(imageModalUrl)
     }
-  }, [imageModalAttachment])
+  }, [imageModalUrl])
 
   useEffect(() => {
     if (!unlocked) {
@@ -155,10 +157,18 @@ function App() {
         window.clearTimeout(inactivityTimerRef.current)
       }
       inactivityTimerRef.current = window.setTimeout(() => {
-        lockVault()
-        setUnlocked(false)
-        setPinInput('')
-        setPinError('Sesion bloqueada por inactividad. Ingresa tu PIN.')
+        void (async () => {
+          try {
+            await forceSaveNoteRef.current()
+            await pagePersistChainRef.current
+          } catch (error) {
+            console.error('Auto-lock: guardado previo fallo:', error)
+          }
+          lockVault()
+          setUnlocked(false)
+          setPinInput('')
+          setPinError('Sesion bloqueada por inactividad. Ingresa tu PIN.')
+        })()
       }, INACTIVITY_AUTO_LOCK_MS)
     }
 
@@ -198,6 +208,10 @@ function App() {
   )
 
   useEffect(() => {
+    if (!unlocked) {
+      editorBoundPageIdRef.current = null
+      return
+    }
     if (!selectedPage || !editorRef.current) {
       editorBoundPageIdRef.current = null
       return
@@ -218,7 +232,9 @@ function App() {
       lastSyncedEditorHtmlRef.current = html
       void handlePageFieldChange('content', html)
     }
-  }, [selectedPage])
+    // handlePageFieldChange excluido: nueva identidad cada render provocaria bucles de persistencia.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPage, unlocked])
 
   const selectedPageAttachments = useMemo(
     () => attachments.filter((attachment) => attachment.pageId === selectedPageId),
@@ -609,11 +625,6 @@ function App() {
     }
     try {
       await unlockVaultWithPin(pinInput, user.sessionConfig.salt, user.sessionConfig.iterations)
-      setUnlocked(true)
-      setPinInput('')
-      setPinError('')
-      setUnlockAttempts(0)
-      setUnlockBlockedUntil(0)
 
       try {
         await encryptExistingDataAtRest()
@@ -623,6 +634,12 @@ function App() {
       }
       await refreshNotebooks()
       markDataSaved()
+
+      setUnlocked(true)
+      setPinInput('')
+      setPinError('')
+      setUnlockAttempts(0)
+      setUnlockBlockedUntil(0)
     } catch (error) {
       setPinError((error as Error).message || 'No se pudo desbloquear la sesion.')
     }
