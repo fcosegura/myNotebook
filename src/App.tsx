@@ -98,6 +98,8 @@ function App() {
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
   const editorRef = useRef<HTMLDivElement | null>(null)
   const lastSyncedEditorHtmlRef = useRef<string>('')
+  /** Evita pisar el DOM del editor con `selectedPage` desactualizado al re-renderizar la misma pagina. */
+  const editorBoundPageIdRef = useRef<string | null>(null)
   const selectedNotebookIdRef = useRef<string | null>(null)
   const pagePersistChainRef = useRef(Promise.resolve())
 
@@ -193,14 +195,19 @@ function App() {
 
   useEffect(() => {
     if (!selectedPage || !editorRef.current) {
+      editorBoundPageIdRef.current = null
       return
     }
     const el = editorRef.current
     const incoming = selectedPage.content || ''
-    if (lastSyncedEditorHtmlRef.current !== incoming) {
+    const navigatedToDifferentPage = editorBoundPageIdRef.current !== selectedPage.id
+    editorBoundPageIdRef.current = selectedPage.id
+
+    if (navigatedToDifferentPage) {
       el.innerHTML = incoming
       lastSyncedEditorHtmlRef.current = incoming
     }
+
     linkifyEditorAutoLinks(el)
     const html = el.innerHTML
     if (html !== lastSyncedEditorHtmlRef.current) {
