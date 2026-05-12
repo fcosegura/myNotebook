@@ -47,6 +47,7 @@ const IMG_REF_IN_TEXT_PATTERN = /\[img:([^\]]+)\]/g
 const EDITOR_AUTO_LINK_CLASS = 'editor-auto-link'
 /** http(s) and www. URLs in plain text (not inside existing anchors). */
 const AUTO_LINK_URL_PATTERN = /\bhttps?:\/\/[^\s<>"')]+|\bwww\.[^\s<>"')]+/gi
+const MAX_PIN_DIGITS = 32
 
 function formatLastSavedDisplay(ts: number): string {
   return new Intl.DateTimeFormat('es', {
@@ -63,6 +64,7 @@ function App() {
   const [unlockAttempts, setUnlockAttempts] = useState(0)
   const [unlockBlockedUntil, setUnlockBlockedUntil] = useState(0)
   const inactivityTimerRef = useRef<number | null>(null)
+  const submitLockScreenRef = useRef<() => void>(() => {})
 
   const [notebooks, setNotebooks] = useState<Notebook[]>([])
   const [pages, setPages] = useState<Page[]>([])
@@ -644,6 +646,57 @@ function App() {
       setPinError((error as Error).message || 'No se pudo desbloquear la sesion.')
     }
   }
+
+  submitLockScreenRef.current = () => {
+    if (!user) {
+      return
+    }
+    void (user.sessionConfig ? handleUnlock() : handleSetupPin())
+  }
+
+  function appendLockPinDigit(digit: string) {
+    if (!/^[0-9]$/.test(digit)) {
+      return
+    }
+    setPinInput((prev) => (prev.length >= MAX_PIN_DIGITS ? prev : prev + digit))
+  }
+
+  function removeLastLockPinDigit() {
+    setPinInput((prev) => prev.slice(0, -1))
+  }
+
+  useEffect(() => {
+    if (user == null || unlocked || secretDialog != null) {
+      return
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest?.('.secret-dialog-backdrop, .app-dialog-backdrop')) {
+        return
+      }
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        return
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        submitLockScreenRef.current()
+        return
+      }
+      if (event.key === 'Backspace') {
+        event.preventDefault()
+        setPinInput((prev) => prev.slice(0, -1))
+        return
+      }
+      if (/^[0-9]$/.test(event.key)) {
+        event.preventDefault()
+        setPinInput((prev) => (prev.length >= MAX_PIN_DIGITS ? prev : prev + event.key))
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [user, unlocked, secretDialog])
 
   async function handlePinChange() {
     if (!user?.sessionConfig) {
@@ -1291,17 +1344,38 @@ function App() {
         <main className={`app-shell ${densityMode} lock-screen`}>
           <h1>Libreta local</h1>
           <p>Tu sesion se guarda solo en este navegador.</p>
-          <input
-            value={pinInput}
-            onChange={(event) => setPinInput(event.target.value)}
-            placeholder="Escribe tu PIN"
-            type="password"
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                void (user.sessionConfig ? handleUnlock() : handleSetupPin())
-              }
-            }}
-          />
+          <div className="pin-entry">
+            <div
+              className="pin-display"
+              role="status"
+              aria-live="polite"
+              aria-label={`${pinInput.length} digitos ingresados`}
+            >
+              {pinInput.length > 0 ? (
+                <span className="pin-display-dots">{'\u2022'.repeat(pinInput.length)}</span>
+              ) : (
+                <span className="pin-display-placeholder">Toca los numeros o escribe con el teclado</span>
+              )}
+            </div>
+            <div className="pin-keypad" role="group" aria-label="Teclado numerico">
+              {(['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const).map((digit) => (
+                <button key={digit} type="button" className="pin-key" onClick={() => appendLockPinDigit(digit)}>
+                  {digit}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="pin-key pin-key-wide"
+                onClick={removeLastLockPinDigit}
+                aria-label="Borrar ultimo digito"
+              >
+                Borrar
+              </button>
+              <button type="button" className="pin-key" onClick={() => appendLockPinDigit('0')}>
+                0
+              </button>
+            </div>
+          </div>
           <button type="button" onClick={user.sessionConfig ? handleUnlock : handleSetupPin}>
             {user.sessionConfig ? 'Desbloquear' : 'Configurar PIN local'}
           </button>
