@@ -75,6 +75,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [pastingImage, setPastingImage] = useState(false)
+  const [forceSavePending, setForceSavePending] = useState(false)
   const [backupStatus, setBackupStatus] = useState('')
   const [backupStatusType, setBackupStatusType] = useState<'success' | 'error' | 'info'>('info')
   const [secretDialog, setSecretDialog] = useState<{ title: string; confirmLabel: string } | null>(null)
@@ -97,6 +98,8 @@ function App() {
 
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
   const editorRef = useRef<HTMLDivElement | null>(null)
+  const editorTitleRef = useRef<HTMLInputElement | null>(null)
+  const forceSaveNoteRef = useRef<() => Promise<void>>(async () => {})
   const lastSyncedEditorHtmlRef = useRef<string>('')
   /** Evita pisar el DOM del editor con `selectedPage` desactualizado al re-renderizar la misma pagina. */
   const editorBoundPageIdRef = useRef<string | null>(null)
@@ -471,6 +474,60 @@ function App() {
       }
     })
   }
+
+  async function forceSaveNote() {
+    if (!selectedPage || !editorRef.current) {
+      setBackupStatus('No hay pagina seleccionada para guardar.')
+      setBackupStatusType('error')
+      return
+    }
+    setForceSavePending(true)
+    try {
+      const editor = editorRef.current
+      linkifyEditorAutoLinks(editor)
+      const html = editor.innerHTML
+      lastSyncedEditorHtmlRef.current = html
+
+      const rawTitle = editorTitleRef.current?.value ?? selectedPage.title
+      const nextTitle = rawTitle.trim() ? rawTitle.trim() : (selectedPage.title.trim() || 'Nueva pagina')
+
+      await handlePageFieldChange('title', nextTitle)
+      await handlePageFieldChange('content', html)
+      setBackupStatus('Nota guardada en este dispositivo.')
+      setBackupStatusType('success')
+    } catch (error) {
+      setBackupStatus(`Error al guardar: ${(error as Error).message}`)
+      setBackupStatusType('error')
+    } finally {
+      setForceSavePending(false)
+    }
+  }
+
+  forceSaveNoteRef.current = forceSaveNote
+
+  useEffect(() => {
+    if (!unlocked) {
+      return
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey) {
+        return
+      }
+      if (event.key.toLowerCase() !== 's') {
+        return
+      }
+      const target = event.target as HTMLElement | null
+      if (target?.closest?.('.app-dialog-backdrop, .secret-dialog-backdrop')) {
+        return
+      }
+      event.preventDefault()
+      void forceSaveNoteRef.current()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [unlocked])
 
   async function handleSetupPin() {
     if (!user) {
@@ -1358,6 +1415,7 @@ function App() {
           ) : (
             <>
               <input
+                ref={editorTitleRef}
                 className="editor-title"
                 value={selectedPage.title}
                 onChange={(event) => {
@@ -1365,6 +1423,20 @@ function App() {
                 }}
               />
               <div className="editor-actions">
+                <div className="editor-actions-group">
+                  <label className="editor-action-field">
+                    <span className="editor-action-label">Guardado</span>
+                    <button
+                      type="button"
+                      className="editor-save-button"
+                      disabled={forceSavePending || pastingImage}
+                      onClick={() => void forceSaveNote()}
+                      title="Volcar titulo y texto al almacenamiento local (Ctrl o Cmd + S)"
+                    >
+                      {forceSavePending ? 'Guardando...' : 'Guardar nota'}
+                    </button>
+                  </label>
+                </div>
                 <div className="editor-actions-group">
                   <label className="editor-action-field">
                     <span className="editor-action-label">Bookmark</span>

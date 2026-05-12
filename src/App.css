@@ -648,6 +648,29 @@
   gap: 0.7rem;
 }
 
+.editor-save-button {
+  border: 1px solid rgb(52 211 153 / 55%);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgb(6 78 59 / 55%), rgb(4 47 46 / 72%));
+  color: #ecfdf5;
+  font-weight: 600;
+  padding: 0.48rem 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.editor-save-button:hover:not(:disabled) {
+  border-color: rgb(110 231 183 / 85%);
+  box-shadow: 0 4px 16px rgb(16 185 129 / 22%);
+  transform: translateY(-1px);
+}
+
+.editor-save-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .editor-action-field {
   display: flex;
   flex-direction: column;
