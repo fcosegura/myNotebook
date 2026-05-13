@@ -49,6 +49,10 @@ const EDITOR_AUTO_LINK_CLASS = 'editor-auto-link'
 const AUTO_LINK_URL_PATTERN = /\bhttps?:\/\/[^\s<>"')]+|\bwww\.[^\s<>"')]+/gi
 const MAX_PIN_DIGITS = 32
 
+function isNotebookArchived(notebook: Notebook): boolean {
+  return notebook.archived === true
+}
+
 function formatLastSavedDisplay(ts: number): string {
   return new Intl.DateTimeFormat('es', {
     dateStyle: 'short',
@@ -94,6 +98,8 @@ function App() {
   const [pagesHidden, setPagesHidden] = useState(false)
   const [densityMode, setDensityMode] = useState<'compact' | 'comfortable'>('comfortable')
   const [notebookMenuId, setNotebookMenuId] = useState<string | null>(null)
+  const [notebookSidebarMode, setNotebookSidebarMode] = useState<'active' | 'archived'>('active')
+  const notebookSidebarModeRef = useRef<'active' | 'archived'>('active')
   const [imageModalAttachment, setImageModalAttachment] = useState<Attachment | null>(null)
   const imageModalUrl = useMemo(() => {
     if (!imageModalAttachment) {
@@ -121,6 +127,10 @@ function App() {
   useEffect(() => {
     selectedNotebookIdRef.current = selectedNotebookId
   }, [selectedNotebookId])
+
+  useEffect(() => {
+    notebookSidebarModeRef.current = notebookSidebarMode
+  }, [notebookSidebarMode])
 
   function markDataSaved() {
     setLastSavedAt(Date.now())
@@ -204,6 +214,14 @@ function App() {
     [notebooks, selectedNotebookId],
   )
 
+  const sidebarNotebooks = useMemo(
+    () =>
+      notebooks.filter((notebook) =>
+        notebookSidebarMode === 'archived' ? isNotebookArchived(notebook) : !isNotebookArchived(notebook),
+      ),
+    [notebooks, notebookSidebarMode],
+  )
+
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === selectedPageId) ?? null,
     [pages, selectedPageId],
@@ -285,13 +303,22 @@ function App() {
     setUnlocked(false)
   }
 
-  async function refreshNotebooks() {
+  async function clearWorkspaceWithoutNotebook() {
+    setSelectedPageId(null)
+    setPages([])
+    setAllPages(await listAllPages())
+    setAttachments(await listAllAttachments())
+  }
+
+  async function refreshNotebooks(options?: { preferNotebookId?: string | null }) {
     const allNotebooks = await listNotebooks()
     setNotebooks(allNotebooks)
 
     if (allNotebooks.length === 0) {
       const notebook = await createNotebook('Mi libreta')
       markDataSaved()
+      notebookSidebarModeRef.current = 'active'
+      setNotebookSidebarMode('active')
       const refreshed = await listNotebooks()
       setNotebooks(refreshed)
       setSelectedNotebookId(notebook.id)
@@ -299,11 +326,31 @@ function App() {
       return
     }
 
-    const notebookId = selectedNotebookId && allNotebooks.some((notebook) => notebook.id === selectedNotebookId)
-      ? selectedNotebookId
-      : allNotebooks[0].id
+    const mode = notebookSidebarModeRef.current
+    const pool = allNotebooks.filter((notebook) =>
+      mode === 'archived' ? isNotebookArchived(notebook) : !isNotebookArchived(notebook),
+    )
+
+    const preferred = options?.preferNotebookId
+    const preferredInPool = preferred && pool.some((notebook) => notebook.id === preferred)
+
+    const keepSelection =
+      selectedNotebookId &&
+      allNotebooks.some((notebook) => notebook.id === selectedNotebookId) &&
+      pool.some((notebook) => notebook.id === selectedNotebookId)
+
+    const notebookId = preferredInPool
+      ? preferred!
+      : keepSelection
+        ? selectedNotebookId!
+        : pool[0]?.id ?? null
+
     setSelectedNotebookId(notebookId)
-    await refreshPages(notebookId)
+    if (notebookId) {
+      await refreshPages(notebookId)
+    } else {
+      await clearWorkspaceWithoutNotebook()
+    }
   }
 
   async function refreshPages(notebookId: string) {
@@ -331,9 +378,9 @@ function App() {
     }
 
     const notebook = await createNotebook(notebookName)
-    await refreshNotebooks()
-    setSelectedNotebookId(notebook.id)
-    await refreshPages(notebook.id)
+    notebookSidebarModeRef.current = 'active'
+    setNotebookSidebarMode('active')
+    await refreshNotebooks({ preferNotebookId: notebook.id })
     markDataSaved()
   }
 
@@ -429,6 +476,27 @@ function App() {
     setSelectedPageId(null)
     await refreshNotebooks()
     markDataSaved()
+  }
+
+  function handleNotebookSidebarModeChange(mode: 'active' | 'archived') {
+    setNotebookSidebarMode(mode)
+    notebookSidebarModeRef.current = mode
+    setNotebookMenuId(null)
+    void refreshNotebooks()
+  }
+
+  async function handleNotebookArchive(notebook: Notebook) {
+    setNotebookMenuId(null)
+    await updateNotebook({ ...notebook, archived: true })
+    markDataSaved()
+    await refreshNotebooks()
+  }
+
+  async function handleNotebookUnarchive(notebook: Notebook) {
+    setNotebookMenuId(null)
+    await updateNotebook({ ...notebook, archived: false })
+    markDataSaved()
+    await refreshNotebooks()
   }
 
   async function handlePageDelete(page?: Page) {
@@ -998,6 +1066,12 @@ function App() {
   }
 
   async function openSearchResult(result: SearchResult) {
+    const all = await listNotebooks()
+    const nb = all.find((notebook) => notebook.id === result.notebookId)
+    if (nb && isNotebookArchived(nb)) {
+      notebookSidebarModeRef.current = 'archived'
+      setNotebookSidebarMode('archived')
+    }
     setSelectedNotebookId(result.notebookId)
     await refreshPages(result.notebookId)
     setSelectedPageId(result.pageId)
@@ -1007,6 +1081,11 @@ function App() {
     const target = allPages.find((page) => page.id === bookmarkPageId)
     if (!target) {
       return
+    }
+    const nb = notebooks.find((notebook) => notebook.id === target.notebookId)
+    if (nb && isNotebookArchived(nb)) {
+      notebookSidebarModeRef.current = 'archived'
+      setNotebookSidebarMode('archived')
     }
     setSelectedNotebookId(target.notebookId)
     await refreshPages(target.notebookId)
@@ -1495,7 +1574,34 @@ function App() {
                   <h2>Libretas</h2>
                 </div>
               </div>
-              {notebooks.map((notebook) => (
+              <div className="notebook-sidebar-tabs" role="tablist" aria-label="Vista de libretas">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={notebookSidebarMode === 'active'}
+                  className={`notebook-sidebar-tab${notebookSidebarMode === 'active' ? ' is-active' : ''}`}
+                  onClick={() => handleNotebookSidebarModeChange('active')}
+                >
+                  Activas
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={notebookSidebarMode === 'archived'}
+                  className={`notebook-sidebar-tab${notebookSidebarMode === 'archived' ? ' is-active' : ''}`}
+                  onClick={() => handleNotebookSidebarModeChange('archived')}
+                >
+                  Archivadas
+                </button>
+              </div>
+              {sidebarNotebooks.length === 0 ? (
+                <p className="notebook-sidebar-empty">
+                  {notebookSidebarMode === 'archived'
+                    ? 'No hay libretas archivadas.'
+                    : 'No hay libretas activas. Crea una nueva o mira en Archivadas.'}
+                </p>
+              ) : null}
+              {sidebarNotebooks.map((notebook) => (
                 <article key={notebook.id} className={`list-item-shell${notebook.id === selectedNotebookId ? ' active' : ''}`}>
                   <button
                     type="button"
@@ -1524,6 +1630,11 @@ function App() {
                   {notebookMenuId === notebook.id ? (
                     <div className="context-menu" onClick={(event) => event.stopPropagation()}>
                       <button type="button" onClick={() => void handleNotebookRename(notebook)}>Renombrar</button>
+                      {isNotebookArchived(notebook) ? (
+                        <button type="button" onClick={() => void handleNotebookUnarchive(notebook)}>Desarchivar</button>
+                      ) : (
+                        <button type="button" onClick={() => void handleNotebookArchive(notebook)}>Archivar</button>
+                      )}
                       <button type="button" onClick={() => void handleNotebookDelete(notebook)}>Eliminar</button>
                     </div>
                   ) : null}
@@ -1539,7 +1650,9 @@ function App() {
 
         <section className="workspace-panel">
           <article className="column editor master-detail-main">
-            {!selectedPage ? (
+            {!selectedNotebookId ? (
+              <p>Selecciona una libreta en la barra lateral, o cambia entre Activas y Archivadas.</p>
+            ) : !selectedPage ? (
             <p>Selecciona una pagina para editar.</p>
           ) : (
             <>
