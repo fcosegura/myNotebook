@@ -246,7 +246,7 @@ function App() {
       lastSyncedEditorHtmlRef.current = incoming
     }
 
-    linkifyEditorAutoLinks(el)
+    linkifyEditorAutoLinksPreservingCaret(el)
     const html = el.innerHTML
     if (html !== lastSyncedEditorHtmlRef.current) {
       lastSyncedEditorHtmlRef.current = html
@@ -571,7 +571,7 @@ function App() {
     setForceSavePending(true)
     try {
       const editor = editorRef.current
-      linkifyEditorAutoLinks(editor)
+      linkifyEditorAutoLinksPreservingCaret(editor)
       const html = editor.innerHTML
       lastSyncedEditorHtmlRef.current = html
 
@@ -882,7 +882,7 @@ function App() {
     if (!selectedPage) {
       return
     }
-    linkifyEditorAutoLinks(editor)
+    linkifyEditorAutoLinksPreservingCaret(editor)
     const html = editor.innerHTML
     if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
       return
@@ -1033,7 +1033,7 @@ function App() {
       return
     }
     const el = event.currentTarget
-    linkifyEditorAutoLinks(el)
+    linkifyEditorAutoLinksPreservingCaret(el)
     const html = el.innerHTML
     if (selectedPage.content === html || lastSyncedEditorHtmlRef.current === html) {
       return
@@ -2002,6 +2002,31 @@ function restoreCaretAtMarker(marker: HTMLElement, selection: Selection) {
 function linkifyEditorAutoLinks(root: HTMLElement) {
   linkifyImgRefsInEditor(root)
   linkifyUrlsInEditor(root)
+}
+
+/**
+ * Auto-enlaces reemplazan nodos de texto; sin esto el navegador suele colapsar la seleccion al inicio del editor.
+ */
+function linkifyEditorAutoLinksPreservingCaret(root: HTMLElement) {
+  const sel = window.getSelection()
+  let marker: HTMLElement | null = null
+  if (sel && sel.rangeCount > 0 && sel.isCollapsed) {
+    const range = sel.getRangeAt(0)
+    if (root.contains(range.commonAncestorContainer)) {
+      marker = insertCaretMarkerBeforeCollapsed(range)
+    }
+  }
+  try {
+    linkifyEditorAutoLinks(root)
+  } finally {
+    if (marker) {
+      if (sel && marker.isConnected) {
+        restoreCaretAtMarker(marker, sel)
+      } else if (marker.isConnected) {
+        marker.remove()
+      }
+    }
+  }
 }
 
 function normalizeAutoLinkUrl(raw: string): { display: string; href: string; tail: string } {
