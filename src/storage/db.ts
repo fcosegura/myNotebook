@@ -18,6 +18,7 @@ export type Notebook = {
   title: string
   color: string
   pinned: boolean
+  archived: boolean
   bookmarkPageId: string | null
   createdAt: number
   updatedAt: number
@@ -60,3 +61,21 @@ db.version(1).stores({
   pages: 'id, notebookId, updatedAt, title, *tags',
   attachments: 'id, pageId, createdAt',
 })
+
+db.version(2)
+  .stores({
+    users: 'id, createdAt',
+    notebooks: 'id, updatedAt, title, pinned, archived',
+    pages: 'id, notebookId, updatedAt, title, *tags',
+    attachments: 'id, pageId, createdAt',
+  })
+  .upgrade(async (tx) => {
+    await tx
+      .table('notebooks')
+      .toCollection()
+      .modify((row: Notebook & { archived?: boolean }) => {
+        if (row.archived === undefined) {
+          row.archived = false
+        }
+      })
+  })

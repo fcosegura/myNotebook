@@ -310,6 +310,43 @@
   text-overflow: ellipsis;
 }
 
+.notebook-sidebar-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.notebook-sidebar-tab {
+  flex: 1;
+  padding: 0.4rem 0.45rem;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid rgb(148 163 184 / 22%);
+  background: rgb(2 6 23 / 45%);
+  color: #94a3b8;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.notebook-sidebar-tab:hover {
+  border-color: rgb(129 140 248 / 45%);
+  color: #cbd5e1;
+}
+
+.notebook-sidebar-tab.is-active {
+  color: #e0f2fe;
+  border-color: rgb(129 140 248 / 55%);
+  background: rgb(30 27 75 / 35%);
+}
+
+.notebook-sidebar-empty {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.82rem;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
 .collapse-toggle {
   border: 1px solid rgb(148 163 184 / 25%);
   background: rgb(2 6 23 / 65%);

@@ -41,11 +41,15 @@ export async function updateUser(user: UserLocal): Promise<void> {
 
 export async function listNotebooks(): Promise<Notebook[]> {
   const notebooks = await db.notebooks.orderBy('updatedAt').reverse().toArray()
+  const withArchived = notebooks.map((notebook) => ({
+    ...notebook,
+    archived: notebook.archived === true,
+  }))
   if (!isVaultUnlocked()) {
-    return notebooks
+    return withArchived
   }
   return Promise.all(
-    notebooks.map(async (notebook) => ({
+    withArchived.map(async (notebook) => ({
       ...notebook,
       title: await decryptField(notebook.title),
     })),
@@ -104,6 +108,7 @@ export async function createNotebook(title: string): Promise<Notebook> {
     title: await encryptField(plainTitle),
     color: DEFAULT_NOTEBOOK_COLOR,
     pinned: false,
+    archived: false,
     bookmarkPageId: null,
     createdAt: now,
     updatedAt: now,
@@ -289,7 +294,11 @@ export async function importBackupPayloadWithMode(
       await db.users.bulkPut(payload.users)
     }
     if (payload.notebooks.length > 0) {
-      await db.notebooks.bulkPut(payload.notebooks)
+      const normalizedNotebooks = payload.notebooks.map((notebook) => ({
+        ...notebook,
+        archived: notebook.archived === true,
+      }))
+      await db.notebooks.bulkPut(normalizedNotebooks)
     }
     if (payload.pages.length > 0) {
       await db.pages.bulkPut(payload.pages)
