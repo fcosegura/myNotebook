@@ -7,6 +7,7 @@ import {
   deleteAttachment,
   deleteNotebook,
   deletePage,
+  encryptExistingDataAtRest,
   ensureUser,
   exportBackupPayload,
   getPageById,
@@ -21,7 +22,7 @@ import {
   updateUser,
 } from './repository'
 import { hashPin } from '../features/session/session'
-import { lockVault, unlockVaultWithPin } from '../features/session/vault'
+import { isVaultUnlocked, lockVault, unlockVaultWithPin } from '../features/session/vault'
 
 const TEST_PIN = 'test-pin-1234'
 const TEST_SALT = 'ci-test-salt'
@@ -35,6 +36,26 @@ async function resetDatabase(): Promise<void> {
 
 async function unlockTestVault(): Promise<void> {
   await unlockVaultWithPin(TEST_PIN, TEST_SALT, TEST_ITERATIONS)
+}
+
+/** Replica pagePersistChainRef + handleLogout de App.tsx */
+function createPagePersistChain() {
+  let chain = Promise.resolve()
+  return {
+    enqueue(task: () => Promise<void>) {
+      chain = chain.then(task)
+      return chain
+    },
+    async flush() {
+      await chain
+    },
+  }
+}
+
+/** Orden de handleUnlock tras introducir el PIN */
+async function simulateLoginAfterLogout(): Promise<void> {
+  await unlockTestVault()
+  await encryptExistingDataAtRest()
 }
 
 describe('persistencia (Dexie / IndexedDB)', () => {
@@ -204,6 +225,168 @@ describe('persistencia (Dexie / IndexedDB)', () => {
     expect(titles).toContain('Nueva local')
     expect(titles).toContain('Local')
     expect(await db.notebooks.count()).toBe(2)
+  })
+
+  describe('cerrar sesion (logout / lockVault)', () => {
+    it('lockVault no elimina filas de IndexedDB', async () => {
+      const notebook = await createNotebook('Tras logout')
+      await createPage(notebook.id, 'Nota')
+
+      const counts = {
+        users: await db.users.count(),
+        notebooks: await db.notebooks.count(),
+        pages: await db.pages.count(),
+      }
+
+      lockVault()
+      expect(isVaultUnlocked()).toBe(false)
+
+      expect(await db.users.count()).toBe(counts.users)
+      expect(await db.notebooks.count()).toBe(counts.notebooks)
+      expect(await db.pages.count()).toBe(counts.pages)
+    })
+
+    it('con sesion bloqueada los datos siguen cifrados en disco', async () => {
+      const notebook = await createNotebook('Bloqueada')
+      const page = await createPage(notebook.id, 'Privada')
+      await updatePage({
+        ...(await getPageById(page.id))!,
+        content: 'Texto privado',
+        tags: [],
+      })
+
+      lockVault()
+
+      const lockedView = await getPageById(page.id)
+      expect(lockedView?.content).not.toBe('Texto privado')
+      expect(lockedView?.content.startsWith('enc:v1:')).toBe(true)
+      expect(await db.pages.get(page.id)).toBeDefined()
+    })
+
+    it('tras logout y login el contenido de la nota se recupera intacto', async () => {
+      const notebook = await createNotebook('Re-login')
+      const page = await createPage(notebook.id, 'Nota')
+      const savedHtml = '<p>Texto guardado antes de cerrar sesion</p>'
+
+      await updatePage({
+        ...(await getPageById(page.id))!,
+        title: 'Nota importante',
+        content: savedHtml,
+        tags: ['trabajo'],
+      })
+
+      lockVault()
+      await simulateLoginAfterLogout()
+
+      const restored = await getPageById(page.id)
+      expect(restored?.title).toBe('Nota importante')
+      expect(restored?.content).toBe(savedHtml)
+      expect(restored?.tags).toEqual(['trabajo'])
+      expect((await listNotebooks()).find((item) => item.id === notebook.id)?.title).toBe('Re-login')
+    })
+
+    it('simula logout: espera cola de guardado y conserva el ultimo contenido', async () => {
+      const notebook = await createNotebook('Cola logout')
+      const page = await createPage(notebook.id, 'Borrador')
+      const persist = createPagePersistChain()
+
+      await updatePage({
+        ...(await getPageById(page.id))!,
+        content: 'Version inicial',
+        tags: [],
+      })
+
+      void persist.enqueue(async () => {
+        const fresh = await getPageById(page.id)
+        if (!fresh) {
+          return
+        }
+        await updatePage({ ...fresh, content: '<p>Editado justo antes de logout</p>' })
+      })
+
+      await persist.flush()
+      lockVault()
+      await simulateLoginAfterLogout()
+
+      expect((await getPageById(page.id))?.content).toBe('<p>Editado justo antes de logout</p>')
+      expect(await db.pages.count()).toBeGreaterThanOrEqual(2)
+    })
+
+    it('logout sin esperar la cola deja el contenido anterior hasta que acabe el guardado', async () => {
+      const notebook = await createNotebook('Logout prematuro')
+      const page = await createPage(notebook.id, 'Pagina')
+      await updatePage({
+        ...(await getPageById(page.id))!,
+        content: 'Contenido estable',
+        tags: [],
+      })
+
+      let releaseSlowUpdate: () => void = () => {}
+      const slowUpdateGate = new Promise<void>((resolve) => {
+        releaseSlowUpdate = resolve
+      })
+
+      const persist = createPagePersistChain()
+      const pendingSave = persist.enqueue(async () => {
+        await slowUpdateGate
+        const fresh = await getPageById(page.id)
+        if (!fresh) {
+          return
+        }
+        await updatePage({ ...fresh, content: 'Cambio que llega tarde' })
+      })
+
+      lockVault()
+      await unlockTestVault()
+      expect((await getPageById(page.id))?.content).toBe('Contenido estable')
+
+      releaseSlowUpdate()
+      await pendingSave
+      expect((await getPageById(page.id))?.content).toBe('Cambio que llega tarde')
+
+      lockVault()
+      await simulateLoginAfterLogout()
+      expect((await getPageById(page.id))?.content).toBe('Cambio que llega tarde')
+    })
+
+    it('login post-logout con encryptExistingDataAtRest no vacia notas existentes', async () => {
+      const notebook = await createNotebook('Migracion')
+      const page = await createPage(notebook.id, 'Segura')
+      await updatePage({
+        ...(await getPageById(page.id))!,
+        content: '<p>No debe perderse</p>',
+        tags: [],
+      })
+
+      lockVault()
+      await simulateLoginAfterLogout()
+      await encryptExistingDataAtRest()
+
+      expect((await getPageById(page.id))?.content).toBe('<p>No debe perderse</p>')
+      expect((await listPagesByNotebook(notebook.id)).length).toBeGreaterThanOrEqual(2)
+    })
+
+    it('sessionConfig del usuario persiste tras cerrar sesion', async () => {
+      const user = await ensureUser()
+      await updateUser({
+        ...user,
+        sessionConfig: {
+          pinHash: await hashPin(TEST_PIN, TEST_SALT, TEST_ITERATIONS),
+          salt: TEST_SALT,
+          iterations: TEST_ITERATIONS,
+        },
+      })
+
+      lockVault()
+      await db.close()
+      await db.open()
+
+      const reloaded = await db.users.get('local-user')
+      expect(reloaded?.sessionConfig?.salt).toBe(TEST_SALT)
+      expect(reloaded?.sessionConfig?.pinHash).toBe(
+        (await hashPin(TEST_PIN, TEST_SALT, TEST_ITERATIONS)),
+      )
+    })
   })
 
   it('los datos cifrados sobreviven a cerrar y reabrir la base', async () => {
