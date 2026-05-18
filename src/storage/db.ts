@@ -24,11 +24,14 @@ export type Notebook = {
   updatedAt: number
 }
 
+export type PageType = 'text' | 'canvas'
+
 export type Page = {
   id: string
   notebookId: string
   title: string
   content: string
+  pageType: PageType
   tags: string[]
   createdAt: number
   updatedAt: number
@@ -76,6 +79,24 @@ db.version(2)
       .modify((row: Notebook & { archived?: boolean }) => {
         if (row.archived === undefined) {
           row.archived = false
+        }
+      })
+  })
+
+db.version(3)
+  .stores({
+    users: 'id, createdAt',
+    notebooks: 'id, updatedAt, title, pinned, archived',
+    pages: 'id, notebookId, updatedAt, title, *tags',
+    attachments: 'id, pageId, createdAt',
+  })
+  .upgrade(async (tx) => {
+    await tx
+      .table('pages')
+      .toCollection()
+      .modify((page: Page) => {
+        if (!page.pageType) {
+          page.pageType = 'text'
         }
       })
   })

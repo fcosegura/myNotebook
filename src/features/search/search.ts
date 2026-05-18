@@ -1,4 +1,5 @@
 import MiniSearch from 'minisearch'
+import { extractCanvasSearchText } from '../canvas/serialize'
 import type { Notebook, Page } from '../../storage/db'
 
 type SearchDoc = {
@@ -39,13 +40,20 @@ export function buildSearchIndex(notebooks: Notebook[], pages: Page[]) {
       notebookId: page.notebookId,
       notebookTitle: notebookMap.get(page.notebookId)?.title ?? 'Sin libreta',
       pageTitle: page.title,
-      content: page.content,
+      content: getSearchableContent(page),
       tags: page.tags.join(' '),
       updatedAt: page.updatedAt,
     })),
   )
 
   return miniSearch
+}
+
+function getSearchableContent(page: Page): string {
+  if (page.pageType === 'canvas') {
+    return extractCanvasSearchText(page.content)
+  }
+  return page.content
 }
 
 export function querySearch(index: MiniSearch<SearchDoc>, term: string): SearchResult[] {

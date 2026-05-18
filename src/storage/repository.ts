@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
-import { db, type Attachment, type Notebook, type Page, type UserLocal } from './db'
+import { emptyCanvasDocument, stringifyCanvasContent } from '../features/canvas/serialize'
+import { db, type Attachment, type Notebook, type Page, type PageType, type UserLocal } from './db'
 import {
   attachmentFromExport,
   attachmentToExport,
@@ -58,10 +59,11 @@ export async function listNotebooks(): Promise<Notebook[]> {
 
 export async function listPagesByNotebook(notebookId: string): Promise<Page[]> {
   const pages = await db.pages.where('notebookId').equals(notebookId).sortBy('updatedAt')
+  const normalized = pages.map((page) => withPageType(page))
   if (!isVaultUnlocked()) {
-    return pages
+    return normalized
   }
-  return Promise.all(pages.map(decryptPage))
+  return Promise.all(normalized.map(decryptPage))
 }
 
 /** Pagina descifrada por id; sirve para fusionar escrituras sin estado React obsoleto. */
@@ -71,17 +73,18 @@ export async function getPageById(pageId: string): Promise<Page | undefined> {
     return undefined
   }
   if (!isVaultUnlocked()) {
-    return page
+    return withPageType(page)
   }
   return decryptPage(page)
 }
 
 export async function listAllPages(): Promise<Page[]> {
   const pages = await db.pages.toArray()
+  const normalized = pages.map((page) => withPageType(page))
   if (!isVaultUnlocked()) {
-    return pages
+    return normalized
   }
-  return Promise.all(pages.map(decryptPage))
+  return Promise.all(normalized.map(decryptPage))
 }
 
 export async function listAllAttachments(): Promise<Attachment[]> {
@@ -131,16 +134,23 @@ export async function updateNotebook(notebook: Notebook): Promise<void> {
   await db.notebooks.put(encryptedNotebook)
 }
 
-export async function createPage(notebookId: string, title: string): Promise<Page> {
+export async function createPage(
+  notebookId: string,
+  title: string,
+  pageType: PageType = 'text',
+): Promise<Page> {
   const now = Date.now()
   const encryptedTitle = await encryptField(title.trim() || 'Nueva pagina')
-  const encryptedContent = await encryptField('')
+  const initialContent =
+    pageType === 'canvas' ? stringifyCanvasContent(emptyCanvasDocument()) : ''
+  const encryptedContent = await encryptField(initialContent)
   const encryptedTags = await encryptField(JSON.stringify([]))
   const page: Page = {
     id: uuidv4(),
     notebookId,
     title: encryptedTitle,
     content: encryptedContent,
+    pageType,
     tags: [encryptedTags],
     createdAt: now,
     updatedAt: now,
@@ -301,7 +311,11 @@ export async function importBackupPayloadWithMode(
       await db.notebooks.bulkPut(normalizedNotebooks)
     }
     if (payload.pages.length > 0) {
-      await db.pages.bulkPut(payload.pages)
+      const normalizedPages = payload.pages.map((page) => ({
+        ...page,
+        pageType: normalizePageType(page.pageType),
+      }))
+      await db.pages.bulkPut(normalizedPages)
     }
     if (payload.attachments.length > 0) {
       await db.attachments.bulkPut(payload.attachments.map((attachment) => attachmentFromExport(attachment)))
@@ -346,6 +360,7 @@ export async function encryptExistingDataAtRest(): Promise<void> {
       }
       return {
         ...page,
+        pageType: normalizePageType(page.pageType),
         title: isEncryptedField(page.title) ? page.title : await encryptField(page.title),
         content: isEncryptedField(page.content) ? page.content : await encryptField(page.content),
         tags: [
@@ -426,6 +441,7 @@ export async function rotateEncryptionPin(
       const tagsJson = await decryptField(tagsRaw)
       return {
         ...page,
+        pageType: normalizePageType(page.pageType),
         title: await decryptField(page.title),
         content: await decryptField(page.content),
         tags: parseTags(tagsJson),
@@ -479,9 +495,21 @@ async function decryptPage(page: Page): Promise<Page> {
   const tagsJson = await decryptField(tagsRaw)
   return {
     ...page,
+    pageType: normalizePageType(page.pageType),
     title: await decryptField(page.title),
     content: await decryptField(page.content),
     tags: parseTags(tagsJson),
+  }
+}
+
+function normalizePageType(pageType: PageType | undefined): PageType {
+  return pageType === 'canvas' ? 'canvas' : 'text'
+}
+
+function withPageType(page: Page): Page {
+  return {
+    ...page,
+    pageType: normalizePageType(page.pageType),
   }
 }
 

@@ -9,7 +9,9 @@ import {
 } from 'react'
 import './App.css'
 import type MiniSearch from 'minisearch'
-import type { Attachment, Notebook, Page, UserLocal } from './storage/db'
+import { CanvasEditor } from './features/canvas/CanvasEditor'
+import type { Attachment, Notebook, Page, PageType, UserLocal } from './storage/db'
+import { buildAttachmentName, downscaleImage } from './features/images/downscale'
 import { parseEncryptedBackup, serializeEncryptedBackup } from './features/backup/crypto'
 import {
   addAttachment,
@@ -232,7 +234,7 @@ function App() {
       editorBoundPageIdRef.current = null
       return
     }
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || selectedPage.pageType === 'canvas' || !editorRef.current) {
       editorBoundPageIdRef.current = null
       return
     }
@@ -384,13 +386,14 @@ function App() {
     markDataSaved()
   }
 
-  async function handlePageCreate() {
+  async function handlePageCreate(pageType: PageType = 'text') {
     if (!selectedNotebookId) {
       return
     }
 
+    const isCanvas = pageType === 'canvas'
     const pageName = await requestTextDialog({
-      title: 'Nueva pagina',
+      title: isCanvas ? 'Nueva pagina canvas' : 'Nueva pagina',
       message: 'Escribe el nombre de la pagina.',
       confirmLabel: 'Crear',
       placeholder: 'Nombre de la pagina',
@@ -399,7 +402,7 @@ function App() {
       return
     }
 
-    const page = await createPage(selectedNotebookId, pageName)
+    const page = await createPage(selectedNotebookId, pageName, pageType)
     await refreshPages(selectedNotebookId)
     setSelectedPageId(page.id)
     markDataSaved()
@@ -412,6 +415,24 @@ function App() {
     })
     pagePersistChainRef.current = next
     return next
+  }
+
+  async function handleCanvasContentChange(content: string) {
+    const pageId = selectedPage?.id
+    if (!pageId || selectedPage?.pageType !== 'canvas') {
+      return
+    }
+    await enqueuePagePersist(async () => {
+      const fresh = await getPageById(pageId)
+      if (!fresh || fresh.pageType !== 'canvas') {
+        return
+      }
+      await updatePage({ ...fresh, content })
+      markDataSaved()
+      if (selectedNotebookIdRef.current === fresh.notebookId) {
+        await refreshPages(fresh.notebookId)
+      }
+    })
   }
 
   async function handlePageBookmark() {
@@ -563,7 +584,17 @@ function App() {
   }
 
   async function forceSaveNote() {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage) {
+      setBackupStatus('No hay pagina seleccionada para guardar.')
+      setBackupStatusType('error')
+      return
+    }
+    if (selectedPage.pageType === 'canvas') {
+      setBackupStatus('El lienzo canvas se guarda automaticamente al editar.')
+      setBackupStatusType('info')
+      return
+    }
+    if (!editorRef.current) {
       setBackupStatus('No hay pagina seleccionada para guardar.')
       setBackupStatusType('error')
       return
@@ -1483,8 +1514,11 @@ function App() {
           </label>
           <div className="toolbar-group">
             <button type="button" onClick={handleNotebookCreate} title="Nueva libreta">+ Libreta</button>
-            <button type="button" onClick={handlePageCreate} title="Nueva pagina" disabled={!selectedNotebookId}>
+            <button type="button" onClick={() => void handlePageCreate('text')} title="Nueva pagina" disabled={!selectedNotebookId}>
               + Pagina
+            </button>
+            <button type="button" onClick={() => void handlePageCreate('canvas')} title="Nueva pagina canvas" disabled={!selectedNotebookId}>
+              + Canvas
             </button>
           </div>
           <button type="button" onClick={() => setActionsOpen((value) => !value)}>
@@ -1702,7 +1736,7 @@ function App() {
                       >
                         {pages.map((page) => (
                           <option key={page.id} value={page.id}>
-                            {page.title}
+                            {page.pageType === 'canvas' ? `[Canvas] ${page.title}` : page.title}
                           </option>
                         ))}
                       </select>
@@ -1713,7 +1747,8 @@ function App() {
                   <label className="editor-action-field">
                     <span className="editor-action-label">Gestion de paginas</span>
                     <div className="editor-action-inline">
-                      <button type="button" onClick={handlePageCreate}>+ Nueva pagina</button>
+                      <button type="button" onClick={() => void handlePageCreate('text')}>+ Nueva pagina</button>
+                      <button type="button" onClick={() => void handlePageCreate('canvas')}>+ Canvas</button>
                       <button type="button" onClick={openMovePageDialog} disabled={!selectedPage}>
                         Mover
                       </button>
@@ -1724,9 +1759,28 @@ function App() {
                   </label>
                 </div>
                 <span className="editor-help-text">
-                  {pastingImage ? 'Procesando screenshot...' : 'Tip: pega screenshot con Ctrl/Cmd + V'}
+                  {pastingImage
+                    ? 'Procesando imagen...'
+                    : selectedPage.pageType === 'canvas'
+                      ? 'Tip: pega imagenes con Ctrl/Cmd + V en el lienzo'
+                      : 'Tip: pega screenshot con Ctrl/Cmd + V'}
                 </span>
               </div>
+              {selectedPage.pageType === 'canvas' ? (
+                <CanvasEditor
+                  pageId={selectedPage.id}
+                  content={selectedPage.content}
+                  attachments={selectedPageAttachments}
+                  onContentChange={(content) => void handleCanvasContentChange(content)}
+                  onAttachmentsChange={() => {
+                    if (selectedNotebookId) {
+                      void refreshPages(selectedNotebookId)
+                    }
+                  }}
+                  pastingImage={pastingImage}
+                  onPastingChange={setPastingImage}
+                />
+              ) : (
               <section className="editor-richtext-shell" aria-label="Editor de contenido enriquecido">
                 <div className="editor-format-toolbar">
                   <div className="editor-history-group" role="group" aria-label="Deshacer y rehacer">
@@ -1827,7 +1881,7 @@ function App() {
                     void processImagePaste(event)
                   }}
                 />
-              </section>
+              </section>              )}
               <nav className="page-nav" aria-label="Navegacion entre paginas">
                 <button
                   type="button"
@@ -1875,6 +1929,7 @@ function App() {
                   </label>
                 ) : null}
               </nav>
+              {selectedPage.pageType === 'canvas' ? null : (
               <section className="attachments">
                 <h3>Imagenes de la pagina</h3>
                 <div className="attachments-content">
@@ -1917,6 +1972,7 @@ function App() {
                   )}
                 </div>
               </section>
+              )}
             </>
           )}
           </article>
@@ -2160,12 +2216,6 @@ function linkifyImgRefsInEditor(root: HTMLElement) {
   }
 }
 
-type ProcessedImage = {
-  blob: Blob
-  width: number
-  height: number
-}
-
 type DialogTone = 'neutral' | 'danger'
 
 type BaseAppDialog = {
@@ -2217,61 +2267,3 @@ type AlertAppDialog = BaseAppDialog & {
 }
 
 type AppDialogState = TextAppDialog | ConfirmAppDialog | AlertAppDialog
-
-async function downscaleImage(file: File): Promise<ProcessedImage> {
-  const dataUrl = await readAsDataUrl(file)
-  const image = await loadImage(dataUrl)
-  const maxDimension = 1800
-
-  let width = image.width
-  let height = image.height
-
-  if (Math.max(width, height) > maxDimension) {
-    const ratio = maxDimension / Math.max(width, height)
-    width = Math.round(width * ratio)
-    height = Math.round(height * ratio)
-  }
-
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const context = canvas.getContext('2d')
-  if (!context) {
-    throw new Error('No se pudo procesar la imagen.')
-  }
-
-  context.drawImage(image, 0, 0, width, height)
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, 'image/webp', 0.85)
-  })
-
-  return {
-    blob: blob ?? file,
-    width,
-    height,
-  }
-}
-
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('No se pudo leer la imagen del portapapeles.'))
-    image.src = src
-  })
-}
-
-function buildAttachmentName(index: number): string {
-  const now = new Date()
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
-  return `img-${stamp}-${String(index).padStart(2, '0')}`
-}
