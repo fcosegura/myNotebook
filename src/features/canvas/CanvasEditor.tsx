@@ -449,11 +449,9 @@ export function CanvasEditor({
   }
 
   function startDrag(event: ReactPointerEvent, element: CanvasElement) {
-    if (editingTextId === element.id) {
-      return
-    }
     event.preventDefault()
     event.stopPropagation()
+    setEditingTextId(null)
     setSelectedId(element.id)
     bringToFront(element.id)
     interactionRef.current = {
@@ -531,6 +529,7 @@ export function CanvasEditor({
         {sortedElements.map((element) => {
           const selected = selectedId === element.id
           if (element.type === 'text') {
+            const isEditing = editingTextId === element.id
             return (
               <div
                 key={element.id}
@@ -547,22 +546,35 @@ export function CanvasEditor({
                   setSelectedId(element.id)
                   bringToFront(element.id)
                 }}
+                onDoubleClick={(event) => {
+                  event.stopPropagation()
+                  setEditingTextId(element.id)
+                  setSelectedId(element.id)
+                  const textarea = event.currentTarget.querySelector('textarea')
+                  if (textarea instanceof HTMLTextAreaElement) {
+                    requestAnimationFrame(() => textarea.focus())
+                  }
+                }}
               >
+                <div
+                  className="canvas-text-drag-bar"
+                  title="Arrastrar"
+                  onPointerDown={(event) => startDrag(event, element)}
+                />
                 <div
                   className="canvas-element-body"
                   onPointerDown={(event) => startDrag(event, element)}
-                  style={{ width: '100%', height: '100%' }}
                 >
                   <textarea
                     value={element.text}
-                    placeholder="Escribe aqui..."
+                    readOnly={!isEditing}
+                    placeholder="Escribe aqui... (doble clic para editar)"
                     onFocus={() => {
                       setEditingTextId(element.id)
                       setSelectedId(element.id)
                     }}
                     onBlur={() => setEditingTextId(null)}
                     onChange={(event) => updateElement(element.id, { text: event.target.value })}
-                    onPointerDown={(event) => event.stopPropagation()}
                   />
                 </div>
                 {selected

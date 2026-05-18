@@ -69,6 +69,41 @@
   background: rgb(15 23 42 / 88%);
 }
 
+.canvas-element-text {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.canvas-text-drag-bar {
+  flex-shrink: 0;
+  height: 22px;
+  cursor: grab;
+  border-bottom: 1px solid rgb(148 163 184 / 22%);
+  background: rgb(30 41 59 / 90%);
+  touch-action: none;
+}
+
+.canvas-text-drag-bar::before {
+  content: '⋮⋮';
+  display: block;
+  text-align: center;
+  font-size: 0.7rem;
+  line-height: 22px;
+  letter-spacing: 0.12em;
+  color: #94a3b8;
+  user-select: none;
+}
+
+.canvas-text-drag-bar:active {
+  cursor: grabbing;
+}
+
+.canvas-element-text .canvas-element-body {
+  flex: 1;
+  min-height: 0;
+}
+
 .canvas-element.selected {
   border-color: rgb(129 140 248 / 85%);
   box-shadow: 0 0 0 1px rgb(99 102 241 / 35%);
@@ -79,7 +114,7 @@
   height: 100%;
   resize: none;
   border: none;
-  border-radius: 7px;
+  border-radius: 0 0 7px 7px;
   background: transparent;
   color: #f1f5f9;
   padding: 0.45rem 0.5rem;
@@ -87,6 +122,15 @@
   line-height: 1.4;
   box-sizing: border-box;
   outline: none;
+  cursor: default;
+}
+
+.canvas-element-text textarea:read-only {
+  pointer-events: none;
+}
+
+.canvas-element-text textarea:not(:read-only) {
+  cursor: text;
 }
 
 .canvas-element-image img {
