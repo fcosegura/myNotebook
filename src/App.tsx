@@ -1768,6 +1768,7 @@ function App() {
               </div>
               {selectedPage.pageType === 'canvas' ? (
                 <CanvasEditor
+                  key={selectedPage.id}
                   pageId={selectedPage.id}
                   content={selectedPage.content}
                   attachments={selectedPageAttachments}

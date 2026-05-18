@@ -74,7 +74,7 @@ export function CanvasEditor({
   const saveTimerRef = useRef<number | null>(null)
   const interactionRef = useRef<Interaction | null>(null)
 
-  const [document, setDocument] = useState<CanvasDocumentV1>(() => parseCanvasContent(content))
+  const [canvasDoc, setCanvasDoc] = useState<CanvasDocumentV1>(() => parseCanvasContent(content))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
 
@@ -101,10 +101,7 @@ export function CanvasEditor({
 
   useEffect(() => {
     contentRef.current = content
-    setDocument(parseCanvasContent(content))
-    setSelectedId(null)
-    setEditingTextId(null)
-  }, [pageId])
+  }, [content])
 
   const flushSave = useCallback(
     (nextDocument: CanvasDocumentV1) => {
@@ -130,7 +127,7 @@ export function CanvasEditor({
 
   const updateDocument = useCallback(
     (updater: (current: CanvasDocumentV1) => CanvasDocumentV1, options?: { immediate?: boolean }) => {
-      setDocument((current) => {
+      setCanvasDoc((current) => {
         const next = updater(current)
         if (options?.immediate) {
           flushSave(next)
@@ -151,13 +148,32 @@ export function CanvasEditor({
     }
   }, [])
 
-  const getBoardSize = useCallback(() => {
-    const rect = boardRef.current?.getBoundingClientRect()
-    return {
-      width: rect?.width ?? 800,
-      height: rect?.height ?? CANVAS_BOARD_MIN_HEIGHT,
+  const [boardSize, setBoardSize] = useState({
+    width: 800,
+    height: CANVAS_BOARD_MIN_HEIGHT,
+  })
+
+  useEffect(() => {
+    const board = boardRef.current
+    if (!board) {
+      return
     }
+
+    const updateSize = () => {
+      const rect = board.getBoundingClientRect()
+      setBoardSize({
+        width: rect.width || 800,
+        height: rect.height || CANVAS_BOARD_MIN_HEIGHT,
+      })
+    }
+
+    updateSize()
+    const observer = new ResizeObserver(updateSize)
+    observer.observe(board)
+    return () => observer.disconnect()
   }, [])
+
+  const getBoardSize = useCallback(() => boardSize, [boardSize])
 
   const getNextZIndex = useCallback((elements: CanvasElement[]) => {
     return elements.reduce((max, element) => Math.max(max, element.zIndex), 0) + 1
@@ -258,13 +274,13 @@ export function CanvasEditor({
       return
     }
 
-    const target = document.elements.find((element) => element.id === selectedId)
+    const target = canvasDoc.elements.find((element) => element.id === selectedId)
     if (!target) {
       return
     }
 
     if (target.type === 'image') {
-      const stillReferenced = document.elements.some(
+      const stillReferenced = canvasDoc.elements.some(
         (element) =>
           element.id !== target.id &&
           element.type === 'image' &&
@@ -286,7 +302,7 @@ export function CanvasEditor({
 
     setSelectedId(null)
     setEditingTextId(null)
-  }, [document.elements, onAttachmentsChange, selectedId, updateDocument])
+  }, [canvasDoc.elements, onAttachmentsChange, selectedId, updateDocument])
 
   const updateElement = useCallback(
     (elementId: string, patch: Partial<CanvasElement>) => {
@@ -343,7 +359,7 @@ export function CanvasEditor({
       const deltaY = event.clientY - interaction.startY
 
       if (interaction.kind === 'drag') {
-        const target = document.elements.find((element) => element.id === interaction.elementId)
+        const target = canvasDoc.elements.find((element) => element.id === interaction.elementId)
         if (!target) {
           return
         }
@@ -357,7 +373,7 @@ export function CanvasEditor({
         return
       }
 
-      const target = document.elements.find((element) => element.id === interaction.elementId)
+      const target = canvasDoc.elements.find((element) => element.id === interaction.elementId)
       if (!target) {
         return
       }
@@ -397,7 +413,7 @@ export function CanvasEditor({
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [clampPosition, clampSize, document.elements, endInteraction, updateElement])
+  }, [clampPosition, clampSize, canvasDoc.elements, endInteraction, updateElement])
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -468,7 +484,7 @@ export function CanvasEditor({
     }
   }
 
-  const sortedElements = [...document.elements].sort((a, b) => a.zIndex - b.zIndex)
+  const sortedElements = [...canvasDoc.elements].sort((a, b) => a.zIndex - b.zIndex)
 
   return (
     <div className="canvas-editor">
@@ -511,6 +527,7 @@ export function CanvasEditor({
           setEditingTextId(null)
         }}
       >
+        {/* eslint-disable react-hooks/refs -- drag/resize handlers only touch refs in pointer events */}
         {sortedElements.map((element) => {
           const selected = selectedId === element.id
           if (element.type === 'text') {
@@ -605,6 +622,7 @@ export function CanvasEditor({
             </div>
           )
         })}
+        {/* eslint-enable react-hooks/refs */}
       </div>
     </div>
   )
