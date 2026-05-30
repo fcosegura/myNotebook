@@ -75,6 +75,7 @@ function App() {
 
   const [notebooks, setNotebooks] = useState<Notebook[]>([])
   const [pages, setPages] = useState<Page[]>([])
+  const [allPages, setAllPages] = useState<Page[]>([])
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
   const [selectedNotebookId, setSelectedNotebookId] = useState<string | null>(null)
@@ -102,6 +103,7 @@ function App() {
   const [notebookMenuId, setNotebookMenuId] = useState<string | null>(null)
   const [pageMenuId, setPageMenuId] = useState<string | null>(null)
   const [sidebarView, setSidebarView] = useState<'notebooks' | 'pages'>('notebooks')
+  const [sidebarPanelMode, setSidebarPanelMode] = useState<'library' | 'bookmarks'>('library')
   const [notebookSidebarMode, setNotebookSidebarMode] = useState<'active' | 'archived'>('active')
   const notebookSidebarModeRef = useRef<'active' | 'archived'>('active')
   const [imageModalAttachment, setImageModalAttachment] = useState<Attachment | null>(null)
@@ -268,6 +270,22 @@ function App() {
 
   const isCurrentPageBookmarked = Boolean(selectedPage?.tags.includes(BOOKMARK_TAG))
 
+  const bookmarkPages = useMemo(() => {
+    const notebookById = new Map(notebooks.map((notebook) => [notebook.id, notebook.title]))
+    return allPages
+      .filter((page) => page.tags.includes(BOOKMARK_TAG))
+      .map((page) => ({
+        id: page.id,
+        notebookId: page.notebookId,
+        notebookTitle: notebookById.get(page.notebookId) ?? 'Libreta',
+        pageTitle: page.title,
+      }))
+      .sort((a, b) => a.pageTitle.localeCompare(b.pageTitle, 'es'))
+  }, [allPages, notebooks])
+
+  async function refreshAllPages() {
+    setAllPages(await listAllPages())
+  }
 
   async function bootstrap() {
     lockVault()
@@ -281,6 +299,7 @@ function App() {
     setSelectedPageId(null)
     setPages([])
     setAttachments(await listAllAttachments())
+    await refreshAllPages()
   }
 
   async function refreshNotebooks(options?: { preferNotebookId?: string | null }) {
@@ -324,6 +343,7 @@ function App() {
     } else {
       await clearWorkspaceWithoutNotebook()
     }
+    await refreshAllPages()
   }
 
   async function refreshPages(notebookId: string) {
@@ -403,6 +423,7 @@ function App() {
         : [...fresh.tags, BOOKMARK_TAG]
       await updatePage({ ...fresh, tags: updatedTags })
       markDataSaved()
+      await refreshAllPages()
       if (selectedNotebookIdRef.current === fresh.notebookId) {
         await refreshPages(fresh.notebookId)
       }
@@ -492,6 +513,7 @@ function App() {
     if (selectedNotebookId) {
       await refreshPages(selectedNotebookId)
     }
+    await refreshAllPages()
     markDataSaved()
   }
 
@@ -1047,9 +1069,29 @@ function App() {
       setNotebookSidebarMode('archived')
     }
     setSelectedNotebookId(result.notebookId)
+    setSidebarPanelMode('library')
     setSidebarView('pages')
     await refreshPages(result.notebookId)
     setSelectedPageId(result.pageId)
+  }
+
+  async function openBookmarkPage(pageId: string) {
+    const target = allPages.find((page) => page.id === pageId)
+    if (!target) {
+      return
+    }
+    const nb = notebooks.find((notebook) => notebook.id === target.notebookId)
+    if (nb && isNotebookArchived(nb)) {
+      notebookSidebarModeRef.current = 'archived'
+      setNotebookSidebarMode('archived')
+    } else {
+      notebookSidebarModeRef.current = 'active'
+      setNotebookSidebarMode('active')
+    }
+    setSelectedNotebookId(target.notebookId)
+    setSidebarView('pages')
+    await refreshPages(target.notebookId)
+    setSelectedPageId(target.id)
   }
 
 
@@ -1519,7 +1561,58 @@ function App() {
               <span className="collapsed-label">Libretas</span>
               <span aria-hidden="true">›</span>
             </button>
-          ) : sidebarView === 'pages' && selectedNotebookId && !pagesHidden ? (
+          ) : (
+            <>
+              <div className="sidebar-panel-switch" role="tablist" aria-label="Vista de la barra lateral">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sidebarPanelMode === 'library'}
+                  className={`sidebar-panel-switch-btn${sidebarPanelMode === 'library' ? ' is-active' : ''}`}
+                  title="Libretas y paginas"
+                  aria-label="Libretas y paginas"
+                  onClick={() => setSidebarPanelMode('library')}
+                >
+                  <FolderIcon />
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sidebarPanelMode === 'bookmarks'}
+                  className={`sidebar-panel-switch-btn${sidebarPanelMode === 'bookmarks' ? ' is-active' : ''}`}
+                  title="Favoritos"
+                  aria-label="Favoritos"
+                  onClick={() => setSidebarPanelMode('bookmarks')}
+                >
+                  <BookmarkIcon filled={sidebarPanelMode === 'bookmarks'} />
+                </button>
+              </div>
+              {sidebarPanelMode === 'bookmarks' ? (
+                <div className="bookmarks-panel">
+                  <h2 className="sidebar-section-label">Favoritos</h2>
+                  {bookmarkPages.length === 0 ? (
+                    <p className="notebook-sidebar-empty">No hay paginas con bookmark.</p>
+                  ) : (
+                    <ul className="bookmarks-list" aria-label="Paginas con bookmark">
+                      {bookmarkPages.map((item) => (
+                        <li
+                          key={item.id}
+                          className={`bookmark-list-item${item.id === selectedPageId ? ' active' : ''}`}
+                        >
+                          <button
+                            type="button"
+                            className="bookmark-list-link"
+                            onClick={() => void openBookmarkPage(item.id)}
+                          >
+                            <span className="bookmark-list-title">{item.pageTitle}</span>
+                            <span className="bookmark-list-meta">{item.notebookTitle}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : sidebarView === 'pages' && selectedNotebookId && !pagesHidden ? (
             <>
               <button type="button" className="sidebar-back-button" onClick={() => setSidebarView('notebooks')}>
                 <span aria-hidden="true">‹</span> Libretas
@@ -1636,6 +1729,8 @@ function App() {
               <button type="button" className="new-item-button" onClick={handleNotebookCreate}>
                 + Nueva libreta
               </button>
+            </>
+              )}
             </>
           )}
           </aside>
@@ -1786,6 +1881,14 @@ function App() {
         </section>
       ) : null}
     </>
+  )
+}
+
+function FolderIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <path d="M4 7h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" strokeLinejoin="round" />
+    </svg>
   )
 }
 
