@@ -1152,7 +1152,7 @@
 .attachment-grid {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 0.8rem;
 }
 
@@ -1160,7 +1160,6 @@
   margin: 0;
   border: 1px solid rgb(148 163 184 / 24%);
   border-radius: 10px;
-  overflow: hidden;
   background: rgb(15 23 42 / 74%);
 }
 
@@ -1172,11 +1171,14 @@
 }
 
 .attachment-preview-button {
+  display: block;
   width: 100%;
   padding: 0;
   border: 0;
   background: transparent;
   cursor: zoom-in;
+  overflow: hidden;
+  border-radius: 10px 10px 0 0;
 }
 
 .attachment-grid figcaption {
@@ -1207,12 +1209,17 @@
 }
 
 .attachment-actions {
-  display: flex;
-  gap: 0.4rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
 }
 
 .attachment-actions button {
-  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.76rem;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .image-modal-backdrop {
