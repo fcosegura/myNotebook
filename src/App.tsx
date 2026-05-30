@@ -1473,28 +1473,33 @@ function App() {
   return (
     <>
       <main className={`app-shell ${densityMode}`}>
-        <header className="app-header">
-          <h1>Libreta local</h1>
-          <label className="search-input-wrap" aria-label="Busqueda global">
-            <span className="search-icon" aria-hidden="true">🔎</span>
-            <input
-              className="search-input"
-              placeholder="Busqueda global inteligente..."
-              value={searchTerm}
-              onChange={(event) => handleSearch(event.target.value)}
-            />
-          </label>
-          <div className="toolbar-group">
-            <button type="button" onClick={handleNotebookCreate} title="Nueva libreta">+ Libreta</button>
-            <button type="button" onClick={handlePageCreate} title="Nueva pagina" disabled={!selectedNotebookId}>
-              + Pagina
+        <div className="app-header-block">
+          <header className="app-header">
+            <div className="app-header-start">
+              <h1>Libreta local</h1>
+              <label className="search-input-wrap" aria-label="Busqueda global">
+                <span className="search-icon" aria-hidden="true">🔎</span>
+                <input
+                  className="search-input"
+                  placeholder="Busqueda global inteligente..."
+                  value={searchTerm}
+                  onChange={(event) => handleSearch(event.target.value)}
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              className={`app-header-actions-btn${actionsOpen ? ' is-open' : ''}`}
+              onClick={() => setActionsOpen((value) => !value)}
+              aria-expanded={actionsOpen}
+              aria-haspopup="true"
+              aria-label="Acciones y configuracion"
+              title="Acciones"
+            >
+              <HeaderMenuIcon />
             </button>
-          </div>
-          <button type="button" onClick={() => setActionsOpen((value) => !value)}>
-            Acciones {actionsOpen ? '▴' : '▾'}
-          </button>
-        </header>
-        {actionsOpen ? (
+          </header>
+          {actionsOpen ? (
           <section className="actions-menu">
             <p className="actions-menu-meta" role="status">
               {lastSavedAt !== null ? (
@@ -1533,7 +1538,8 @@ function App() {
               {logoutPending ? 'Cerrando sesion...' : 'Cerrar sesion'}
             </button>
           </section>
-        ) : null}
+          ) : null}
+        </div>
         {backupStatus ? <p className={`backup-status ${backupStatusType}`}>{backupStatus}</p> : null}
 
       {searchResults.length > 0 ? (
@@ -1911,6 +1917,16 @@ function PageEmptyIcon() {
         <path d="M9 8h6M9 12h6M9 16h4" strokeLinecap="round" />
       </svg>
     </span>
+  )
+}
+
+function HeaderMenuIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="12" cy="6" r="1.5" />
+      <circle cx="12" cy="12" r="1.5" />
+      <circle cx="12" cy="18" r="1.5" />
+    </svg>
   )
 }
 
