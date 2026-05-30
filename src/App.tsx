@@ -40,7 +40,7 @@ import { createSalt, hashPin } from './features/session/session'
 import { lockVault, unlockVaultWithPin } from './features/session/vault'
 
 const BOOKMARK_TAG = 'bookmark'
-const INACTIVITY_AUTO_LOCK_MS = 5 * 60 * 1000
+const INACTIVITY_AUTO_LOCK_MS = 30 * 60 * 1000
 const TEXT_COLOR_PALETTE = ['#f8fafc', '#f87171', '#facc15', '#4ade80', '#60a5fa', '#c084fc', '#f472b6', '#fb923c']
 const FONT_SIZE_STEPS_PX = [12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32] as const
 const IMG_REF_IN_TEXT_PATTERN = /\[img:([^\]]+)\]/g
