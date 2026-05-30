@@ -40,7 +40,7 @@ import { createSalt, hashPin } from './features/session/session'
 import { lockVault, unlockVaultWithPin } from './features/session/vault'
 
 const BOOKMARK_TAG = 'bookmark'
-const INACTIVITY_AUTO_LOCK_MS = 5 * 60 * 1000
+const INACTIVITY_AUTO_LOCK_MS = 30 * 60 * 1000
 const TEXT_COLOR_PALETTE = [
   '#f87171', '#fb923c', '#facc15', '#4ade80', '#60a5fa',
   '#2563eb', '#c084fc', '#f472b6', '#fdba74',
