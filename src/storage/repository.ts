@@ -150,17 +150,26 @@ export async function createPage(notebookId: string, title: string): Promise<Pag
   return page
 }
 
-export async function updatePage(page: Page): Promise<void> {
+export type UpdatePageOptions = {
+  /** When false, keeps page.updatedAt so manual sidebar order is unchanged (e.g. bookmark toggle). */
+  touchUpdatedAt?: boolean
+}
+
+export async function updatePage(page: Page, options: UpdatePageOptions = {}): Promise<void> {
+  const touchUpdatedAt = options.touchUpdatedAt ?? true
+  const nextUpdatedAt = touchUpdatedAt ? Date.now() : page.updatedAt
   const encryptedTags = await encryptField(JSON.stringify(page.tags))
   const encryptedPage: Page = {
     ...page,
     title: await encryptField(page.title),
     content: await encryptField(page.content),
     tags: [encryptedTags],
-    updatedAt: Date.now(),
+    updatedAt: nextUpdatedAt,
   }
   await db.pages.put(encryptedPage)
-  await db.notebooks.update(page.notebookId, { updatedAt: encryptedPage.updatedAt })
+  if (touchUpdatedAt) {
+    await db.notebooks.update(page.notebookId, { updatedAt: encryptedPage.updatedAt })
+  }
 }
 
 export async function movePageBefore(
