@@ -462,6 +462,7 @@
 
 .notebook-tree-header {
   padding: 0.15rem 0;
+  align-items: center;
 }
 
 .notebook-tree-folder {
@@ -517,6 +518,10 @@
 
 .tree-hover-action {
   opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
   width: 26px;
   min-width: 26px;
   height: 26px;
@@ -525,8 +530,10 @@
   border-radius: 6px !important;
   background: transparent !important;
   color: rgb(148 163 184 / 88%) !important;
-  font-size: 0.82rem;
+  font-size: 1rem;
+  font-weight: 500;
   line-height: 1;
+  text-align: center;
   cursor: pointer;
   transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
@@ -743,6 +750,7 @@
   min-height: 70vh;
 }
 
+.master-detail-main > .editor-header,
 .master-detail-main > .editor-title,
 .master-detail-main > .editor-actions,
 .master-detail-main > .page-nav,
@@ -784,6 +792,58 @@
   outline: none;
   border-color: rgb(129 140 248 / 80%);
   box-shadow: 0 0 0 3px rgb(99 102 241 / 18%);
+}
+
+.editor-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.editor-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0 !important;
+  border: 1px solid rgb(148 163 184 / 24%);
+  border-radius: 8px;
+  background: rgb(2 6 23 / 56%);
+  color: #e2e8f0;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.editor-icon-button:hover:not(:disabled) {
+  border-color: rgb(129 140 248 / 70%);
+  background: rgb(30 41 59 / 75%);
+}
+
+.editor-icon-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.editor-icon-button.bookmark-icon.active {
+  border-color: rgb(250 204 21 / 72%);
+  background: linear-gradient(180deg, rgb(146 64 14 / 55%), rgb(120 53 15 / 65%));
+  color: #fef3c7;
+  box-shadow: inset 0 0 0 1px rgb(251 191 36 / 32%);
+}
+
+.editor-icon-button.save-icon.saved {
+  border-color: rgb(52 211 153 / 55%);
+  background: linear-gradient(180deg, rgb(6 78 59 / 55%), rgb(4 47 46 / 72%));
+  color: #ecfdf5;
 }
 
 .editor-richtext-shell {
