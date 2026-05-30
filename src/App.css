@@ -1158,8 +1158,10 @@
 
 .attachment-grid figure {
   margin: 0;
+  min-width: 0;
   border: 1px solid rgb(148 163 184 / 24%);
   border-radius: 10px;
+  overflow: hidden;
   background: rgb(15 23 42 / 74%);
 }
 
@@ -1186,6 +1188,7 @@
   display: grid;
   gap: 0.45rem;
   font-size: 0.78rem;
+  min-width: 0;
 }
 
 .attachment-meta {
@@ -1209,17 +1212,17 @@
 }
 
 .attachment-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 0.35rem;
 }
 
 .attachment-actions button {
-  min-width: 0;
-  padding: 0.35rem 0.4rem;
-  font-size: 0.76rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.38rem 0.5rem;
+  font-size: 0.78rem;
   text-align: center;
-  white-space: nowrap;
 }
 
 .image-modal-backdrop {
