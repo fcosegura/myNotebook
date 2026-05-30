@@ -56,6 +56,24 @@ function isNotebookArchived(notebook: Notebook): boolean {
   return notebook.archived === true
 }
 
+function isPageBookmarked(page: { tags: string[] }): boolean {
+  return page.tags.includes(BOOKMARK_TAG)
+}
+
+function PageTreeTitle({ page }: { page: Page }) {
+  const bookmarked = isPageBookmarked(page)
+  return (
+    <span className="page-tree-label">
+      {bookmarked ? (
+        <span className="item-icon page-tree-bookmark-icon" aria-hidden="true" title="Marcada como favorita">
+          🔖
+        </span>
+      ) : null}
+      <span className="page-tree-title-text">{page.title}</span>
+    </span>
+  )
+}
+
 function formatLastSavedDisplay(ts: number): string {
   return new Intl.DateTimeFormat('es', {
     dateStyle: 'short',
@@ -104,6 +122,7 @@ function App() {
   const [pageMenuId, setPageMenuId] = useState<string | null>(null)
   const [sidebarView, setSidebarView] = useState<'notebooks' | 'pages'>('notebooks')
   const [sidebarPanelMode, setSidebarPanelMode] = useState<'library' | 'bookmarks'>('library')
+  const [bookmarkNotebooksCollapsed, setBookmarkNotebooksCollapsed] = useState<Set<string>>(new Set())
   const [notebookSidebarMode, setNotebookSidebarMode] = useState<'active' | 'archived'>('active')
   const notebookSidebarModeRef = useRef<'active' | 'archived'>('active')
   const [imageModalAttachment, setImageModalAttachment] = useState<Attachment | null>(null)
@@ -270,18 +289,46 @@ function App() {
 
   const isCurrentPageBookmarked = Boolean(selectedPage?.tags.includes(BOOKMARK_TAG))
 
-  const bookmarkPages = useMemo(() => {
-    const notebookById = new Map(notebooks.map((notebook) => [notebook.id, notebook.title]))
-    return allPages
-      .filter((page) => page.tags.includes(BOOKMARK_TAG))
-      .map((page) => ({
-        id: page.id,
-        notebookId: page.notebookId,
-        notebookTitle: notebookById.get(page.notebookId) ?? 'Libreta',
-        pageTitle: page.title,
+  const bookmarkTree = useMemo(() => {
+    const notebookById = new Map(notebooks.map((notebook) => [notebook.id, notebook]))
+    const grouped = new Map<string, { notebook: Notebook; pages: Page[] }>()
+
+    for (const page of allPages) {
+      if (!isPageBookmarked(page)) {
+        continue
+      }
+      const notebook = notebookById.get(page.notebookId)
+      if (!notebook) {
+        continue
+      }
+      const entry = grouped.get(notebook.id) ?? { notebook, pages: [] }
+      entry.pages.push(page)
+      grouped.set(notebook.id, entry)
+    }
+
+    return Array.from(grouped.values())
+      .map(({ notebook, pages }) => ({
+        notebook,
+        pages: pages.sort((a, b) => a.title.localeCompare(b.title, 'es')),
       }))
-      .sort((a, b) => a.pageTitle.localeCompare(b.pageTitle, 'es'))
+      .sort((a, b) => a.notebook.title.localeCompare(b.notebook.title, 'es'))
   }, [allPages, notebooks])
+
+  function toggleBookmarkNotebookExpanded(notebookId: string) {
+    setBookmarkNotebooksCollapsed((current) => {
+      const next = new Set(current)
+      if (next.has(notebookId)) {
+        next.delete(notebookId)
+      } else {
+        next.add(notebookId)
+      }
+      return next
+    })
+  }
+
+  function isBookmarkNotebookExpanded(notebookId: string) {
+    return !bookmarkNotebooksCollapsed.has(notebookId)
+  }
 
   async function refreshAllPages() {
     setAllPages(await listAllPages())
@@ -1594,28 +1641,52 @@ function App() {
                 </button>
               </div>
               {sidebarPanelMode === 'bookmarks' ? (
-                <div className="bookmarks-panel">
+                <div className="notebook-tree bookmarks-tree" aria-label="Favoritos por libreta">
                   <h2 className="sidebar-section-label">Favoritos</h2>
-                  {bookmarkPages.length === 0 ? (
+                  {bookmarkTree.length === 0 ? (
                     <p className="notebook-sidebar-empty">No hay paginas con bookmark.</p>
                   ) : (
-                    <ul className="bookmarks-list" aria-label="Paginas con bookmark">
-                      {bookmarkPages.map((item) => (
-                        <li
-                          key={item.id}
-                          className={`bookmark-list-item${item.id === selectedPageId ? ' active' : ''}`}
-                        >
-                          <button
-                            type="button"
-                            className="bookmark-list-link"
-                            onClick={() => void openBookmarkPage(item.id)}
-                          >
-                            <span className="bookmark-list-title">{item.pageTitle}</span>
-                            <span className="bookmark-list-meta">{item.notebookTitle}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                    bookmarkTree.map(({ notebook, pages }) => {
+                      const expanded = isBookmarkNotebookExpanded(notebook.id)
+                      return (
+                        <div key={notebook.id} className="bookmark-notebook-group">
+                          <div className="notebook-tree-header list-item-shell">
+                            <button
+                              type="button"
+                              className="notebook-tree-folder-btn"
+                              aria-expanded={expanded}
+                              onClick={() => toggleBookmarkNotebookExpanded(notebook.id)}
+                            >
+                              <span className="notebook-tree-chevron" aria-hidden="true">
+                                {expanded ? '▾' : '›'}
+                              </span>
+                              <span className="item-icon notebook-folder-icon" aria-hidden="true">
+                                📁
+                              </span>
+                              <span className="notebook-tree-name">{notebook.title}</span>
+                            </button>
+                          </div>
+                          {expanded ? (
+                            <ul className="pages-tree" aria-label={`Paginas favoritas de ${notebook.title}`}>
+                              {pages.map((page) => (
+                                <li
+                                  key={page.id}
+                                  className={`page-tree-item list-item-shell${page.id === selectedPageId ? ' active' : ''}`}
+                                >
+                                  <button
+                                    type="button"
+                                    className={`page-tree-link${page.id === selectedPageId ? ' active' : ''}`}
+                                    onClick={() => void openBookmarkPage(page.id)}
+                                  >
+                                    <PageTreeTitle page={page} />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                      )
+                    })
                   )}
                 </div>
               ) : sidebarView === 'pages' && selectedNotebookId && !pagesHidden ? (
@@ -1634,7 +1705,9 @@ function App() {
                 <ul className="pages-tree" aria-label="Paginas de la libreta">
                   {pages.map((page) => (
                     <li key={page.id} className={`page-tree-item list-item-shell${page.id === selectedPageId ? ' active' : ''}`}>
-                      <button type="button" className={`page-tree-link${page.id === selectedPageId ? ' active' : ''}`} onClick={() => setSelectedPageId(page.id)}>{page.title}</button>
+                      <button type="button" className={`page-tree-link${page.id === selectedPageId ? ' active' : ''}`} onClick={() => setSelectedPageId(page.id)}>
+                        <PageTreeTitle page={page} />
+                      </button>
                       <button type="button" className="tree-hover-action tree-menu-action" aria-label={`Opciones de ${page.title}`} title="Opciones" onClick={(event) => { event.stopPropagation(); setPageMenuId((value) => (value === page.id ? null : page.id)) }}>···</button>
                       {pageMenuId === page.id ? (
                         <div className="context-menu page-context-menu" onClick={(event) => event.stopPropagation()}>
