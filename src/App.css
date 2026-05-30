@@ -16,52 +16,75 @@
   padding: 0.85rem;
 }
 
-.app-header {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
+.app-header-block {
   flex-shrink: 0;
   margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
   position: sticky;
   top: 0;
   z-index: 20;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   background: rgb(5 11 24 / 85%);
   backdrop-filter: blur(8px);
   border: 1px solid rgb(148 163 184 / 20%);
   border-radius: 12px;
-  padding: 0.6rem 0.75rem;
+  padding: 0.55rem 0.7rem;
   transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.app-header-start {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  flex: 1;
 }
 
 .app-header h1 {
   margin: 0;
+  flex-shrink: 0;
   font-size: 1.05rem;
   letter-spacing: 0.01em;
   font-weight: 700;
   color: #f8fafc;
 }
 
-.app-header button {
-  border: 1px solid rgb(148 163 184 / 28%);
-  border-radius: 9px;
-  background: linear-gradient(180deg, rgb(15 23 42 / 94%), rgb(15 23 42 / 72%));
-  color: #dbeafe;
-  padding: 0.48rem 0.72rem;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.18s ease;
-}
-
-.app-header button:hover {
-  border-color: rgb(129 140 248 / 70%);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgb(79 70 229 / 18%);
-}
-
-.toolbar-group {
-  display: flex;
+.app-header-actions-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: rgb(30 41 59 / 35%);
+  color: rgb(203 213 225 / 88%);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.app-header-actions-btn:hover {
+  background: rgb(30 41 59 / 55%);
+  color: #e2e8f0;
+}
+
+.app-header-actions-btn.is-open {
+  background: rgb(30 41 59 / 62%);
+  color: #e2e8f0;
+  box-shadow: inset 0 0 0 1px rgb(148 163 184 / 16%);
 }
 
 .search-input {
@@ -76,7 +99,10 @@
 }
 
 .search-input-wrap {
-  flex: 1;
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 400px;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 0.35rem;
@@ -117,8 +143,10 @@
   flex-shrink: 0;
 }
 
-.actions-menu {
-  margin: -0.3rem 0 0.7rem;
+.app-header-block .actions-menu {
+  margin: 0 0 0 auto;
+  align-self: flex-end;
+  width: min(100%, 420px);
   border: 1px solid rgb(148 163 184 / 22%);
   border-radius: 10px;
   background: rgb(15 23 42 / 68%);
@@ -129,6 +157,7 @@
   gap: 0.5rem;
   animation: fade-slide-in 0.2s ease;
   flex-shrink: 0;
+  box-shadow: 0 10px 24px rgb(2 6 23 / 45%);
 }
 
 .actions-menu-meta {
@@ -1587,10 +1616,15 @@
   font-size: 0.95rem;
 }
 
-.app-shell.compact .search-input,
-.app-shell.compact .app-header button {
+.app-shell.compact .search-input {
   padding-top: 0.4rem;
   padding-bottom: 0.4rem;
+}
+
+.app-shell.compact .app-header-actions-btn {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
 }
 
 .app-shell.compact .column {
@@ -1652,8 +1686,20 @@
     flex-direction: column;
   }
 
-  .toolbar-group {
-    width: 100%;
+  .app-header {
+    flex-wrap: wrap;
+    padding: 0.55rem 0.65rem;
+  }
+
+  .app-header-start {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+  }
+
+  .search-input-wrap {
+    max-width: none;
+    flex: 1 1 100%;
   }
 
   .workspace-panel {
