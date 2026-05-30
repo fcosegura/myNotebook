@@ -108,6 +108,21 @@ describe('persistencia (Dexie / IndexedDB)', () => {
     expect(loaded?.tags).toEqual(['alpha', 'beta'])
   })
 
+  it('updatePage sin touchUpdatedAt no altera el orden de paginas', async () => {
+    const notebook = await createNotebook('Bookmark orden')
+    const [firstPage] = await listPagesByNotebook(notebook.id)
+    const secondPage = await createPage(notebook.id, 'Segunda')
+    const thirdPage = await createPage(notebook.id, 'Tercera')
+
+    const orderBefore = (await listPagesByNotebook(notebook.id)).map((page) => page.id)
+    expect(orderBefore).toEqual([firstPage.id, secondPage.id, thirdPage.id])
+
+    await updatePage({ ...firstPage, tags: ['bookmark'] }, { touchUpdatedAt: false })
+
+    const orderAfter = (await listPagesByNotebook(notebook.id)).map((page) => page.id)
+    expect(orderAfter).toEqual(orderBefore)
+  })
+
   it('movePageBefore reordena paginas por updatedAt', async () => {
     const notebook = await createNotebook('Orden')
     const pageA = await createPage(notebook.id, 'A')

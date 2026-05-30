@@ -468,7 +468,7 @@ function App() {
       const updatedTags = hasBookmark
         ? fresh.tags.filter((tag) => tag !== BOOKMARK_TAG)
         : [...fresh.tags, BOOKMARK_TAG]
-      await updatePage({ ...fresh, tags: updatedTags })
+      await updatePage({ ...fresh, tags: updatedTags }, { touchUpdatedAt: false })
       markDataSaved()
       await refreshAllPages()
       if (selectedNotebookIdRef.current === fresh.notebookId) {
