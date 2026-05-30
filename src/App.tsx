@@ -1739,9 +1739,17 @@ function App() {
         <section className="workspace-panel">
           <article className="column editor master-detail-main">
             {!selectedNotebookId ? (
-              <p>Selecciona una libreta en la barra lateral, o cambia entre Activas y Archivadas.</p>
+              <div className="workspace-empty-state" role="status">
+                <NotebookEmptyIcon />
+                <p className="workspace-empty-text">
+                  Selecciona una libreta en la barra lateral, o cambia entre Activas y Archivadas.
+                </p>
+              </div>
             ) : !selectedPage ? (
-            <p>Selecciona una pagina para editar.</p>
+            <div className="workspace-empty-state" role="status">
+              <PageEmptyIcon />
+              <p className="workspace-empty-text">Selecciona una pagina para editar.</p>
+            </div>
           ) : (
             <>
               <div className="editor-header">
@@ -1881,6 +1889,28 @@ function App() {
         </section>
       ) : null}
     </>
+  )
+}
+
+function NotebookEmptyIcon() {
+  return (
+    <span className="workspace-empty-icon" aria-hidden="true">
+      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25">
+        <path d="M6 4h12a1 1 0 0 1 1 1v14l-4-2.5L11 19V5a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1z" strokeLinejoin="round" />
+        <path d="M11 5h8v12l-3-1.75" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  )
+}
+
+function PageEmptyIcon() {
+  return (
+    <span className="workspace-empty-icon" aria-hidden="true">
+      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25">
+        <path d="M7 4h10a1 1 0 0 1 1 1v14l-4-2-4 2V5a1 1 0 0 0 1-1H7a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1z" strokeLinejoin="round" />
+        <path d="M9 8h6M9 12h6M9 16h4" strokeLinecap="round" />
+      </svg>
+    </span>
   )
 }
 
