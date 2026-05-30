@@ -503,11 +503,75 @@
   min-height: 70vh;
 }
 
-.master-detail-main > .editor-title,
-.master-detail-main > .editor-actions,
-.master-detail-main > .page-nav,
+.master-detail-main > .editor-header,
 .master-detail-main > .attachments {
   flex-shrink: 0;
+}
+
+.editor-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.editor-header .editor-title {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  font-size: 1.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0;
+  letter-spacing: -0.02em;
+  color: #f8fafc;
+}
+
+.editor-header .editor-title:focus {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding-top: 0.35rem;
+}
+
+.editor-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgb(148 163 184 / 18%);
+  border-radius: 10px;
+  background: rgb(2 6 23 / 45%);
+  color: rgb(148 163 184 / 95%);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.editor-icon-button:hover:not(:disabled) {
+  border-color: rgb(129 140 248 / 55%);
+  color: #e2e8f0;
+  background: rgb(30 27 75 / 35%);
+}
+
+.editor-icon-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.editor-icon-button.bookmark-icon.active {
+  color: #fbbf24;
+  border-color: rgb(251 191 36 / 45%);
+  background: rgb(69 26 3 / 35%);
+}
+
+.editor-icon-button.save-icon.saved {
+  color: #86efac;
+  border-color: rgb(74 222 128 / 35%);
 }
 
 .detail-pages-panel {
