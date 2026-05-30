@@ -41,7 +41,10 @@ import { lockVault, unlockVaultWithPin } from './features/session/vault'
 
 const BOOKMARK_TAG = 'bookmark'
 const INACTIVITY_AUTO_LOCK_MS = 5 * 60 * 1000
-const TEXT_COLOR_PALETTE = ['#f8fafc', '#f87171', '#facc15', '#4ade80', '#60a5fa', '#c084fc', '#f472b6', '#fb923c']
+const TEXT_COLOR_PALETTE = [
+  '#f87171', '#fb923c', '#facc15', '#4ade80', '#60a5fa',
+  '#2563eb', '#c084fc', '#f472b6', '#fdba74',
+]
 const FONT_SIZE_STEPS_PX = [12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32] as const
 const IMG_REF_IN_TEXT_PATTERN = /\[img:([^\]]+)\]/g
 const EDITOR_AUTO_LINK_CLASS = 'editor-auto-link'
@@ -98,6 +101,9 @@ function App() {
   const [pagesHidden, setPagesHidden] = useState(false)
   const [densityMode, setDensityMode] = useState<'compact' | 'comfortable'>('comfortable')
   const [notebookMenuId, setNotebookMenuId] = useState<string | null>(null)
+  const [pageMenuId, setPageMenuId] = useState<string | null>(null)
+  const [sidebarView, setSidebarView] = useState<'notebooks' | 'pages'>('notebooks')
+  const [sidebarPanelMode, setSidebarPanelMode] = useState<'library' | 'bookmarks'>('library')
   const [notebookSidebarMode, setNotebookSidebarMode] = useState<'active' | 'archived'>('active')
   const notebookSidebarModeRef = useRef<'active' | 'archived'>('active')
   const [imageModalAttachment, setImageModalAttachment] = useState<Attachment | null>(null)
@@ -139,6 +145,7 @@ function App() {
   useEffect(() => {
     function handleGlobalClick() {
       setNotebookMenuId(null)
+      setPageMenuId(null)
     }
     window.addEventListener('click', handleGlobalClick)
     return () => {
@@ -261,14 +268,9 @@ function App() {
     [attachments, selectedPageId],
   )
 
-  const selectedPageIndex = useMemo(
-    () => pages.findIndex((page) => page.id === selectedPageId),
-    [pages, selectedPageId],
-  )
+  const isCurrentPageBookmarked = Boolean(selectedPage?.tags.includes(BOOKMARK_TAG))
 
-  const hasPrevPage = selectedPageIndex > 0
-  const hasNextPage = selectedPageIndex >= 0 && selectedPageIndex < pages.length - 1
-  const bookmarkOptions = useMemo(() => {
+  const bookmarkPages = useMemo(() => {
     const notebookById = new Map(notebooks.map((notebook) => [notebook.id, notebook.title]))
     return allPages
       .filter((page) => page.tags.includes(BOOKMARK_TAG))
@@ -278,21 +280,11 @@ function App() {
         notebookTitle: notebookById.get(page.notebookId) ?? 'Libreta',
         pageTitle: page.title,
       }))
+      .sort((a, b) => a.pageTitle.localeCompare(b.pageTitle, 'es'))
   }, [allPages, notebooks])
-  const isCurrentPageBookmarked = Boolean(selectedPage?.tags.includes(BOOKMARK_TAG))
 
-  function goToPrevPage() {
-    if (!hasPrevPage) {
-      return
-    }
-    setSelectedPageId(pages[selectedPageIndex - 1].id)
-  }
-
-  function goToNextPage() {
-    if (!hasNextPage) {
-      return
-    }
-    setSelectedPageId(pages[selectedPageIndex + 1].id)
+  async function refreshAllPages() {
+    setAllPages(await listAllPages())
   }
 
   async function bootstrap() {
@@ -306,8 +298,8 @@ function App() {
   async function clearWorkspaceWithoutNotebook() {
     setSelectedPageId(null)
     setPages([])
-    setAllPages(await listAllPages())
     setAttachments(await listAllAttachments())
+    await refreshAllPages()
   }
 
   async function refreshNotebooks(options?: { preferNotebookId?: string | null }) {
@@ -351,12 +343,12 @@ function App() {
     } else {
       await clearWorkspaceWithoutNotebook()
     }
+    await refreshAllPages()
   }
 
   async function refreshPages(notebookId: string) {
     const allPages = await listPagesByNotebook(notebookId)
     setPages(allPages)
-    setAllPages(await listAllPages())
     const allAttachments = await listAllAttachments()
     setAttachments(allAttachments)
 
@@ -414,11 +406,12 @@ function App() {
     return next
   }
 
-  async function handlePageBookmark() {
-    if (!selectedPage) {
+  async function handlePageBookmark(page?: Page) {
+    const current = page ?? selectedPage
+    if (!current) {
       return
     }
-    const pageId = selectedPage.id
+    const pageId = current.id
     await enqueuePagePersist(async () => {
       const fresh = await getPageById(pageId)
       if (!fresh) {
@@ -430,10 +423,12 @@ function App() {
         : [...fresh.tags, BOOKMARK_TAG]
       await updatePage({ ...fresh, tags: updatedTags })
       markDataSaved()
+      await refreshAllPages()
       if (selectedNotebookIdRef.current === fresh.notebookId) {
         await refreshPages(fresh.notebookId)
       }
     })
+    setPageMenuId(null)
   }
 
   async function handleNotebookRename(notebook?: Notebook) {
@@ -518,6 +513,7 @@ function App() {
     if (selectedNotebookId) {
       await refreshPages(selectedNotebookId)
     }
+    await refreshAllPages()
     markDataSaved()
   }
 
@@ -1073,12 +1069,14 @@ function App() {
       setNotebookSidebarMode('archived')
     }
     setSelectedNotebookId(result.notebookId)
+    setSidebarPanelMode('library')
+    setSidebarView('pages')
     await refreshPages(result.notebookId)
     setSelectedPageId(result.pageId)
   }
 
-  async function openBookmarkPage(bookmarkPageId: string) {
-    const target = allPages.find((page) => page.id === bookmarkPageId)
+  async function openBookmarkPage(pageId: string) {
+    const target = allPages.find((page) => page.id === pageId)
     if (!target) {
       return
     }
@@ -1086,11 +1084,16 @@ function App() {
     if (nb && isNotebookArchived(nb)) {
       notebookSidebarModeRef.current = 'archived'
       setNotebookSidebarMode('archived')
+    } else {
+      notebookSidebarModeRef.current = 'active'
+      setNotebookSidebarMode('active')
     }
     setSelectedNotebookId(target.notebookId)
+    setSidebarView('pages')
     await refreshPages(target.notebookId)
     setSelectedPageId(target.id)
   }
+
 
   async function removeAttachment(attachmentId: string) {
     await deleteAttachment(attachmentId)
@@ -1560,6 +1563,88 @@ function App() {
             </button>
           ) : (
             <>
+              <div className="sidebar-panel-switch" role="tablist" aria-label="Vista de la barra lateral">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sidebarPanelMode === 'library'}
+                  className={`sidebar-panel-switch-btn${sidebarPanelMode === 'library' ? ' is-active' : ''}`}
+                  title="Libretas y paginas"
+                  aria-label="Libretas y paginas"
+                  onClick={() => setSidebarPanelMode('library')}
+                >
+                  <FolderIcon />
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sidebarPanelMode === 'bookmarks'}
+                  className={`sidebar-panel-switch-btn${sidebarPanelMode === 'bookmarks' ? ' is-active' : ''}`}
+                  title="Favoritos"
+                  aria-label="Favoritos"
+                  onClick={() => setSidebarPanelMode('bookmarks')}
+                >
+                  <BookmarkIcon filled={sidebarPanelMode === 'bookmarks'} />
+                </button>
+              </div>
+              {sidebarPanelMode === 'bookmarks' ? (
+                <div className="bookmarks-panel">
+                  <h2 className="sidebar-section-label">Favoritos</h2>
+                  {bookmarkPages.length === 0 ? (
+                    <p className="notebook-sidebar-empty">No hay paginas con bookmark.</p>
+                  ) : (
+                    <ul className="bookmarks-list" aria-label="Paginas con bookmark">
+                      {bookmarkPages.map((item) => (
+                        <li
+                          key={item.id}
+                          className={`bookmark-list-item${item.id === selectedPageId ? ' active' : ''}`}
+                        >
+                          <button
+                            type="button"
+                            className="bookmark-list-link"
+                            onClick={() => void openBookmarkPage(item.id)}
+                          >
+                            <span className="bookmark-list-title">{item.pageTitle}</span>
+                            <span className="bookmark-list-meta">{item.notebookTitle}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : sidebarView === 'pages' && selectedNotebookId && !pagesHidden ? (
+            <>
+              <button type="button" className="sidebar-back-button" onClick={() => setSidebarView('notebooks')}>
+                <span aria-hidden="true">‹</span> Libretas
+              </button>
+              <div className="notebook-tree">
+                <div className="notebook-tree-header list-item-shell">
+                  <span className="notebook-tree-folder">
+                    <span className="item-icon notebook-folder-icon" aria-hidden="true">📁</span>
+                    <span className="notebook-tree-name">{selectedNotebook?.title ?? 'Libreta'}</span>
+                  </span>
+                  <button type="button" className="tree-hover-action" aria-label="Nueva pagina" title="Nueva pagina" onClick={handlePageCreate}>+</button>
+                </div>
+                <ul className="pages-tree" aria-label="Paginas de la libreta">
+                  {pages.map((page) => (
+                    <li key={page.id} className={`page-tree-item list-item-shell${page.id === selectedPageId ? ' active' : ''}`}>
+                      <button type="button" className={`page-tree-link${page.id === selectedPageId ? ' active' : ''}`} onClick={() => setSelectedPageId(page.id)}>{page.title}</button>
+                      <button type="button" className="tree-hover-action tree-menu-action" aria-label={`Opciones de ${page.title}`} title="Opciones" onClick={(event) => { event.stopPropagation(); setPageMenuId((value) => (value === page.id ? null : page.id)) }}>···</button>
+                      {pageMenuId === page.id ? (
+                        <div className="context-menu page-context-menu" onClick={(event) => event.stopPropagation()}>
+                          <button type="button" onClick={() => void handlePageBookmark(page)}>Bookmark</button>
+                          <button type="button" onClick={openMovePageDialog}>Mover</button>
+                          <button type="button" onClick={() => void handlePageDelete(page)}>Eliminar</button>
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                {pages.length === 0 ? <p className="notebook-sidebar-empty">Sin paginas. Usa + para crear una.</p> : null}
+              </div>
+            </>
+          ) : (
+            <>
               <div className="column-title section-title">
                 <div className="column-title-left">
                   <button
@@ -1602,12 +1687,13 @@ function App() {
                 </p>
               ) : null}
               {sidebarNotebooks.map((notebook) => (
-                <article key={notebook.id} className={`list-item-shell${notebook.id === selectedNotebookId ? ' active' : ''}`}>
+                <article key={notebook.id} className={`list-item-shell sidebar-notebook-item${notebook.id === selectedNotebookId ? ' active' : ''}`}>
                   <button
                     type="button"
                     className={`list-item row-item${notebook.id === selectedNotebookId ? ' active' : ''}`}
                     onClick={() => {
                       setSelectedNotebookId(notebook.id)
+                      setSidebarView('pages')
                       void refreshPages(notebook.id)
                     }}
                   >
@@ -1618,14 +1704,14 @@ function App() {
                   </button>
                   <button
                     type="button"
-                    className="item-menu-button"
+                    className="item-menu-button tree-hover-action"
                     aria-label={`Acciones para ${notebook.title}`}
                     onClick={(event) => {
                       event.stopPropagation()
                       setNotebookMenuId((value) => (value === notebook.id ? null : notebook.id))
                     }}
                   >
-                    ⋮
+                    ···
                   </button>
                   {notebookMenuId === notebook.id ? (
                     <div className="context-menu" onClick={(event) => event.stopPropagation()}>
@@ -1644,6 +1730,8 @@ function App() {
                 + Nueva libreta
               </button>
             </>
+              )}
+            </>
           )}
           </aside>
         ) : null}
@@ -1656,162 +1744,64 @@ function App() {
             <p>Selecciona una pagina para editar.</p>
           ) : (
             <>
-              <input
-                ref={editorTitleRef}
-                className="editor-title"
-                value={selectedPage.title}
-                onChange={(event) => {
-                  void handlePageFieldChange('title', event.target.value)
-                }}
-              />
-              <div className="editor-actions">
-                <div className="editor-actions-group">
-                  <label className="editor-action-field">
-                    <span className="editor-action-label">Guardado</span>
-                    <button
-                      type="button"
-                      className="editor-save-button"
-                      disabled={forceSavePending || pastingImage}
-                      onClick={() => void forceSaveNote()}
-                      title="Volcar titulo y texto al almacenamiento local (Ctrl o Cmd + S)"
-                    >
-                      {forceSavePending ? 'Guardando...' : 'Guardar nota'}
-                    </button>
-                  </label>
+              <div className="editor-header">
+                <input
+                  ref={editorTitleRef}
+                  className="editor-title"
+                  value={selectedPage.title}
+                  onChange={(event) => {
+                    void handlePageFieldChange('title', event.target.value)
+                  }}
+                />
+                <div className="editor-header-actions">
+                  <button
+                    type="button"
+                    className={`editor-icon-button bookmark-icon${isCurrentPageBookmarked ? ' active' : ''}`}
+                    aria-pressed={isCurrentPageBookmarked}
+                    onClick={() => void handlePageBookmark()}
+                    title={isCurrentPageBookmarked ? 'Quitar bookmark' : 'Marcar pagina'}
+                    aria-label={isCurrentPageBookmarked ? 'Quitar bookmark' : 'Marcar pagina'}
+                  >
+                    <BookmarkIcon filled={isCurrentPageBookmarked} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`editor-icon-button save-icon${lastSavedAt !== null ? ' saved' : ''}`}
+                    disabled={forceSavePending || pastingImage}
+                    onClick={() => void forceSaveNote()}
+                    title={
+                      forceSavePending
+                        ? 'Guardando...'
+                        : lastSavedAt !== null
+                          ? `Guardado ${formatLastSavedDisplay(lastSavedAt)}`
+                          : 'Guardar nota (Ctrl/Cmd + S)'
+                    }
+                    aria-label="Guardar nota"
+                  >
+                    <CloudSaveIcon saving={forceSavePending} saved={lastSavedAt !== null} />
+                  </button>
                 </div>
-                <div className="editor-actions-group">
-                  <label className="editor-action-field">
-                    <span className="editor-action-label">Bookmark</span>
-                    <button
-                      type="button"
-                      className={`bookmark-button${isCurrentPageBookmarked ? ' active' : ''}`}
-                      aria-pressed={isCurrentPageBookmarked}
-                      onClick={() => void handlePageBookmark()}
-                    >
-                      {isCurrentPageBookmarked ? 'Quitar bookmark' : 'Marcar pagina actual'}
-                    </button>
-                  </label>
-                  {!pagesHidden ? (
-                    <label className="editor-action-field">
-                      <span className="editor-action-label">Pagina activa</span>
-                      <select
-                        className="page-combo"
-                        value={selectedPageId ?? ''}
-                        onChange={(event) => setSelectedPageId(event.target.value)}
-                        aria-label="Seleccionar pagina activa"
-                      >
-                        {pages.map((page) => (
-                          <option key={page.id} value={page.id}>
-                            {page.title}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : null}
-                </div>
-                <div className="editor-actions-group">
-                  <label className="editor-action-field">
-                    <span className="editor-action-label">Gestion de paginas</span>
-                    <div className="editor-action-inline">
-                      <button type="button" onClick={handlePageCreate}>+ Nueva pagina</button>
-                      <button type="button" onClick={openMovePageDialog} disabled={!selectedPage}>
-                        Mover
-                      </button>
-                      <button type="button" onClick={() => void handlePageDelete()} disabled={!selectedPage}>
-                        Eliminar pagina
-                      </button>
-                    </div>
-                  </label>
-                </div>
-                <span className="editor-help-text">
-                  {pastingImage ? 'Procesando screenshot...' : 'Tip: pega screenshot con Ctrl/Cmd + V'}
-                </span>
               </div>
               <section className="editor-richtext-shell" aria-label="Editor de contenido enriquecido">
-                <div className="editor-format-toolbar">
+                <div className="editor-format-toolbar editor-format-toolbar-compact">
                   <div className="editor-history-group" role="group" aria-label="Deshacer y rehacer">
-                    <button
-                      type="button"
-                      onClick={() => applyEditorHistory('undo')}
-                      title="Deshacer (Ctrl/Cmd+Z)"
-                      aria-label="Deshacer"
-                    >
-                      Deshacer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyEditorHistory('redo')}
-                      title="Rehacer (Ctrl/Cmd+Shift+Z)"
-                      aria-label="Rehacer"
-                    >
-                      Rehacer
-                    </button>
+                    <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorHistory('undo')} title="Deshacer (Ctrl/Cmd+Z)" aria-label="Deshacer"><UndoIcon /></button>
+                    <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorHistory('redo')} title="Rehacer (Ctrl/Cmd+Shift+Z)" aria-label="Rehacer"><RedoIcon /></button>
                   </div>
                   <div className="editor-font-size-group" role="group" aria-label="Tamano del texto">
-                    <button
-                      type="button"
-                      className="font-size-step"
-                      onClick={() => applySelectionFontSizeStep(-3)}
-                      title="Reducir 3 escalones de tamano (selecciona texto)"
-                      aria-label="Reducir tamano del texto tres escalones"
-                    >
-                      A−
-                    </button>
-                    <button
-                      type="button"
-                      className="font-size-step"
-                      onClick={() => applySelectionFontSizeStep(3)}
-                      title="Aumentar 3 escalones de tamano (selecciona texto)"
-                      aria-label="Aumentar tamano del texto tres escalones"
-                    >
-                      A+
-                    </button>
+                    <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => applySelectionFontSizeStep(-3)} title="Reducir tamano" aria-label="Reducir tamano del texto">A−</button>
+                    <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => applySelectionFontSizeStep(3)} title="Aumentar tamano" aria-label="Aumentar tamano del texto">A+</button>
                   </div>
-                  <button type="button" onClick={() => applyEditorCommand('bold')} title="Negrita (Ctrl/Cmd+B)">
-                    Negrita
-                  </button>
-                  <button type="button" onClick={() => applyEditorCommand('italic')} title="Cursiva (Ctrl/Cmd+I)">
-                    Cursiva
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyEditorCommand('insertUnorderedList')}
-                    title="Lista con viñetas"
-                  >
-                    Viñetas
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyEditorCommand('insertOrderedList')}
-                    title="Lista numerada"
-                  >
-                    Numerada
-                  </button>
-                  <button
-                    type="button"
-                    onClick={applyEditorBlockquote}
-                    title="Cita: aplicar o quitar (si ya estas en cita)"
-                    aria-label="Alternar cita en el parrafo"
-                  >
-                    Cita
-                  </button>
-                  <button type="button" onClick={() => applyEditorCommand('underline')} title="Subrayado">
-                    Subrayado
-                  </button>
-                  <button type="button" onClick={() => applyEditorCommand('strikeThrough')} title="Tachado">
-                    Tachado
-                  </button>
+                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('bold')} title="Negrita (Ctrl/Cmd+B)" aria-label="Negrita"><strong>B</strong></button>
+                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('italic')} title="Cursiva (Ctrl/Cmd+I)" aria-label="Cursiva"><em>I</em></button>
+                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('insertUnorderedList')} title="Lista con viñetas" aria-label="Lista con viñetas"><ListBulletIcon /></button>
+                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('insertOrderedList')} title="Lista numerada" aria-label="Lista numerada"><ListNumberIcon /></button>
+                  <button type="button" className="toolbar-icon-btn" onClick={applyEditorBlockquote} title="Cita" aria-label="Alternar cita"><QuoteIcon /></button>
+                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('underline')} title="Subrayado" aria-label="Subrayado"><span className="toolbar-underline">U</span></button>
+                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('strikeThrough')} title="Tachado" aria-label="Tachado"><span className="toolbar-strike">S</span></button>
                   <div className="editor-color-palette" role="group" aria-label="Color del texto">
                     {TEXT_COLOR_PALETTE.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        className="color-swatch"
-                        style={{ backgroundColor: color }}
-                        onClick={() => applyEditorCommand('foreColor', color)}
-                        title={`Color ${color}`}
-                        aria-label={`Aplicar color ${color}`}
-                      />
+                      <button key={color} type="button" className="color-swatch" style={{ backgroundColor: color }} onClick={() => applyEditorCommand('foreColor', color)} title={`Color ${color}`} aria-label={`Aplicar color ${color}`} />
                     ))}
                   </div>
                 </div>
@@ -1823,58 +1813,12 @@ function App() {
                   data-placeholder="Escribe tu nota aqui. Puedes pegar imagenes desde portapapeles."
                   onInput={handleEditorInput}
                   onClick={handleEditorRichTextClick}
-                  onPaste={(event) => {
-                    void processImagePaste(event)
-                  }}
+                  onPaste={(event) => { void processImagePaste(event) }}
                 />
+                <footer className="editor-footer-tip" role="status">
+                  {pastingImage ? 'Procesando screenshot...' : 'Tip: pega screenshot con Ctrl/Cmd + V'}
+                </footer>
               </section>
-              <nav className="page-nav" aria-label="Navegacion entre paginas">
-                <button
-                  type="button"
-                  onClick={goToPrevPage}
-                  disabled={!hasPrevPage}
-                  title="Pagina anterior"
-                >
-                  <span aria-hidden="true">‹</span> Anterior
-                </button>
-                <span className="page-nav-status">
-                  {selectedPageIndex >= 0
-                    ? `Pagina ${selectedPageIndex + 1} de ${pages.length}`
-                    : ''}
-                </span>
-                <button
-                  type="button"
-                  onClick={goToNextPage}
-                  disabled={!hasNextPage}
-                  title="Siguiente pagina"
-                >
-                  Siguiente <span aria-hidden="true">›</span>
-                </button>
-                {bookmarkOptions.length > 0 ? (
-                  <label className="bookmark-nav">
-                    <span>Bookmarks</span>
-                    <select
-                      className="page-combo"
-                      value={isCurrentPageBookmarked && selectedPage ? selectedPage.id : ''}
-                      onChange={(event) => {
-                        const pageId = event.target.value
-                        if (!pageId) {
-                          return
-                        }
-                        void openBookmarkPage(pageId)
-                      }}
-                      aria-label="Ir a pagina con bookmark"
-                    >
-                      <option value="">Ir a bookmark...</option>
-                      {bookmarkOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.pageTitle} · {option.notebookTitle}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-              </nav>
               <section className="attachments">
                 <h3>Imagenes de la pagina</h3>
                 <div className="attachments-content">
@@ -1937,6 +1881,83 @@ function App() {
         </section>
       ) : null}
     </>
+  )
+}
+
+function FolderIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <path d="M4 7h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function BookmarkIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1z" />
+    </svg>
+  )
+}
+
+function CloudSaveIcon({ saving, saved }: { saving: boolean; saved: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <path d="M7 18h10a4 4 0 0 0 .5-8 5.5 5.5 0 0 0-10.6 1.5A3.5 3.5 0 0 0 7 18z" />
+      {saving ? <circle cx="12" cy="14" r="2" fill="currentColor" stroke="none" opacity="0.7" /> : saved ? <path d="M9.5 14.5l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" /> : null}
+    </svg>
+  )
+}
+
+function UndoIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M9 14H4V9" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 9a8 8 0 1 1 2 5.3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function RedoIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M15 14h5V9" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 9a8 8 0 1 0-2 5.3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ListBulletIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <line x1="9" y1="6" x2="20" y2="6" strokeLinecap="round" />
+      <line x1="9" y1="12" x2="20" y2="12" strokeLinecap="round" />
+      <line x1="9" y1="18" x2="20" y2="18" strokeLinecap="round" />
+      <circle cx="5" cy="6" r="1" fill="currentColor" stroke="none" />
+      <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="5" cy="18" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+function ListNumberIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <line x1="10" y1="6" x2="20" y2="6" strokeLinecap="round" />
+      <line x1="10" y1="12" x2="20" y2="12" strokeLinecap="round" />
+      <line x1="10" y1="18" x2="20" y2="18" strokeLinecap="round" />
+      <text x="4" y="8" fill="currentColor" stroke="none" fontSize="7" fontFamily="system-ui">1</text>
+      <text x="4" y="14" fill="currentColor" stroke="none" fontSize="7" fontFamily="system-ui">2</text>
+      <text x="4" y="20" fill="currentColor" stroke="none" fontSize="7" fontFamily="system-ui">3</text>
+    </svg>
+  )
+}
+
+function QuoteIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M7 6h4v8H7V6zm0 0C7 4.3 8.3 3 10 3s3 1.3 3 3-1.3 3-3 3H7zm7 0h4v8h-4V6zm0 0c0-1.7 1.3-3 3-3s3 1.3 3 3-1.3 3-3 3h-3z" opacity="0.85" />
+    </svg>
   )
 }
 
