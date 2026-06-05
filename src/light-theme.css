@@ -1,0 +1,264 @@
+/*
+ * Safe light theme layer.
+ *
+ * This file intentionally avoids changing the app layout. It only overrides colors,
+ * surfaces, borders and subtle visual hierarchy after App.css has loaded.
+ */
+
+:root {
+  color-scheme: light;
+  --light-bg: #f7f8fc;
+  --light-bg-tint: #eef2ff;
+  --light-surface: #ffffff;
+  --light-surface-soft: #f8fafc;
+  --light-surface-muted: #f1f5f9;
+  --light-border: #d8e0ec;
+  --light-border-strong: #c7d2fe;
+  --light-text: #0f172a;
+  --light-text-muted: #64748b;
+  --light-text-soft: #94a3b8;
+  --light-accent: #4f46e5;
+  --light-accent-soft: #eef2ff;
+  --light-success: #166534;
+  --light-success-soft: #dcfce7;
+  --light-warning: #92400e;
+  --light-warning-soft: #fef3c7;
+  --light-danger: #991b1b;
+  --light-danger-soft: #fee2e2;
+  --light-shadow: 0 14px 34px rgb(15 23 42 / 8%);
+  --light-shadow-soft: 0 8px 20px rgb(15 23 42 / 6%);
+}
+
+body {
+  background: var(--light-bg);
+}
+
+.app-shell {
+  color: var(--light-text) !important;
+  background:
+    radial-gradient(900px 420px at -10% -18%, rgb(199 210 254 / 52%), transparent 62%),
+    radial-gradient(900px 420px at 110% -12%, rgb(186 230 253 / 46%), transparent 60%),
+    linear-gradient(180deg, #fbfdff 0%, var(--light-bg) 100%) !important;
+}
+
+.app-header,
+.column,
+.app-header-block .actions-menu,
+.search-results button,
+.backup-status,
+.detail-pages-panel,
+.editor-richtext-shell,
+.editor-actions,
+.page-nav,
+.context-menu,
+.attachment-grid figure,
+.dialog-card,
+.lock-card,
+.image-modal-card {
+  background: rgb(255 255 255 / 88%) !important;
+  border-color: rgb(148 163 184 / 30%) !important;
+  color: var(--light-text) !important;
+  box-shadow: var(--light-shadow-soft) !important;
+}
+
+.app-header {
+  backdrop-filter: blur(16px) !important;
+}
+
+.app-header h1,
+.column-title-left h2,
+.notebook-tree-folder,
+.notebook-tree-folder-btn,
+.editor-title,
+.editor-richtext,
+.actions-menu-meta time,
+.attachment-meta strong {
+  color: var(--light-text) !important;
+}
+
+.search-input-wrap,
+.search-input,
+.editor-title,
+.lock-screen .pin-display,
+.editor-richtext,
+.page-combo,
+.editor-format-toolbar button,
+.column button,
+.actions-menu button,
+.page-nav button,
+.collapse-toggle,
+.editor-icon-button {
+  background: rgb(248 250 252 / 94%) !important;
+  border-color: rgb(148 163 184 / 34%) !important;
+  color: #1e293b !important;
+}
+
+.search-input-wrap:focus-within,
+.search-input:focus,
+.editor-title:focus,
+.lock-screen .pin-display:focus-within,
+.editor-richtext:focus,
+.page-combo:focus {
+  border-color: rgb(99 102 241 / 55%) !important;
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 12%) !important;
+}
+
+.search-input::placeholder,
+.editor-richtext:empty::before {
+  color: rgb(100 116 139 / 70%) !important;
+}
+
+.app-header-actions-btn,
+.new-item-button {
+  background: var(--light-surface-muted) !important;
+  color: #334155 !important;
+}
+
+.app-header-actions-btn:hover,
+.app-header-actions-btn.is-open,
+.column button:hover,
+.actions-menu button:hover,
+.page-nav button:hover:not(:disabled),
+.editor-icon-button:hover:not(:disabled),
+.new-item-button:hover,
+.notebook-tree-folder-btn:hover,
+.page-tree-link:hover,
+.bookmark-list-link:hover,
+.sidebar-panel-switch-btn:hover,
+.notebook-sidebar-tab:hover,
+.tree-hover-action:hover {
+  background: var(--light-accent-soft) !important;
+  border-color: rgb(99 102 241 / 38%) !important;
+  color: var(--light-accent) !important;
+  box-shadow: none !important;
+}
+
+.column button.active,
+.page-tree-item.active .page-tree-link,
+.page-tree-link.active,
+.bookmark-list-item.active .bookmark-list-link,
+.sidebar-panel-switch-btn.is-active,
+.notebook-sidebar-tab.is-active {
+  background: linear-gradient(180deg, rgb(224 231 255 / 94%), rgb(238 242 255 / 94%)) !important;
+  border-color: rgb(99 102 241 / 48%) !important;
+  color: #312e81 !important;
+  box-shadow: inset 3px 0 0 rgb(99 102 241 / 70%) !important;
+}
+
+.list-item-shell.active::before {
+  background: var(--light-accent) !important;
+}
+
+.sidebar-section-label,
+.bookmark-list-meta,
+.notebook-sidebar-empty,
+.workspace-empty-text,
+.attachment-meta small,
+.attachments-empty,
+.actions-menu-meta,
+.page-nav-status,
+.editor-help-text,
+.editor-action-label,
+.attachments h3,
+.collapsed-label {
+  color: var(--light-text-muted) !important;
+}
+
+.notebook-sidebar-tabs,
+.sidebar-panel-switch {
+  background: rgb(241 245 249 / 86%) !important;
+  border-color: rgb(148 163 184 / 24%) !important;
+}
+
+.pages-tree {
+  border-left-color: rgb(99 102 241 / 20%) !important;
+}
+
+.editor-richtext-shell {
+  background: rgb(255 255 255 / 80%) !important;
+}
+
+.editor-richtext {
+  background: #ffffff !important;
+  line-height: 1.65 !important;
+}
+
+.editor-format-toolbar {
+  background: rgb(248 250 252 / 92%) !important;
+  border-color: rgb(148 163 184 / 24%) !important;
+}
+
+.editor-save-button,
+.editor-icon-button.save-icon.saved {
+  background: linear-gradient(180deg, #dcfce7, #bbf7d0) !important;
+  border-color: rgb(34 197 94 / 42%) !important;
+  color: var(--light-success) !important;
+}
+
+.editor-save-button:hover:not(:disabled) {
+  box-shadow: 0 8px 18px rgb(34 197 94 / 16%) !important;
+}
+
+.bookmark-button.active,
+.editor-icon-button.bookmark-icon.active {
+  background: linear-gradient(180deg, #fef3c7, #fde68a) !important;
+  border-color: rgb(245 158 11 / 45%) !important;
+  color: var(--light-warning) !important;
+}
+
+.actions-menu button.actions-logout-button {
+  background: linear-gradient(180deg, #fee2e2, #fecaca) !important;
+  border-color: rgb(239 68 68 / 38%) !important;
+  color: var(--light-danger) !important;
+}
+
+.backup-status.success {
+  color: var(--light-success) !important;
+  background: rgb(220 252 231 / 88%) !important;
+  border-color: rgb(34 197 94 / 24%) !important;
+}
+
+.backup-status.error {
+  color: var(--light-danger) !important;
+  background: rgb(254 226 226 / 88%) !important;
+  border-color: rgb(239 68 68 / 24%) !important;
+}
+
+.backup-status.info {
+  color: #475569 !important;
+}
+
+.editor-richtext a.editor-auto-link,
+.editor-richtext a.editor-img-ref {
+  color: #2563eb !important;
+}
+
+.color-swatch {
+  box-shadow: 0 1px 3px rgb(15 23 42 / 16%) !important;
+}
+
+.attachment-grid img {
+  background: #f8fafc !important;
+}
+
+.workspace-empty-icon {
+  color: #64748b !important;
+  opacity: 0.28 !important;
+}
+
+.dialog-backdrop,
+.image-modal-backdrop,
+.lock-screen {
+  background: rgb(15 23 42 / 28%) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 0.85rem;
+  }
+
+  .app-header {
+    background: rgb(255 255 255 / 94%) !important;
+  }
+}
