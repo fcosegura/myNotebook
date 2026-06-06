@@ -117,7 +117,6 @@ function App() {
   const [formatMenuOpen, setFormatMenuOpen] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [notebooksHidden, setNotebooksHidden] = useState(false)
-  const [pagesHidden, setPagesHidden] = useState(false)
   const [notebookMenuId, setNotebookMenuId] = useState<string | null>(null)
   const [pageMenuId, setPageMenuId] = useState<string | null>(null)
   const [sidebarView, setSidebarView] = useState<'notebooks' | 'pages'>('notebooks')
@@ -1579,9 +1578,6 @@ function App() {
             <button type="button" onClick={() => setNotebooksHidden((value) => !value)}>
               {notebooksHidden ? 'Mostrar barra de libretas' : 'Ocultar barra de libretas'}
             </button>
-            <button type="button" onClick={() => setPagesHidden((value) => !value)}>
-              {pagesHidden ? 'Mostrar barra de paginas' : 'Ocultar barra de paginas'}
-            </button>
             <button
               type="button"
               className="actions-logout-button"
@@ -1696,7 +1692,7 @@ function App() {
                     })
                   )}
                 </div>
-              ) : sidebarView === 'pages' && selectedNotebookId && !pagesHidden ? (
+              ) : sidebarView === 'pages' && selectedNotebookId ? (
             <>
               <button type="button" className="sidebar-back-button" onClick={() => setSidebarView('notebooks')}>
                 <span aria-hidden="true">‹</span> Libretas
