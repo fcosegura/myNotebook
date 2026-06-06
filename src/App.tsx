@@ -910,13 +910,16 @@ function App() {
         if (!fresh) {
           return
         }
-        const referenceLine = `\n[img:${attachment.name ?? attachment.id}]`
-        const nextContent = `${fresh.content}${fresh.content.endsWith('\n') || !fresh.content ? '' : '\n'}${referenceLine.trimStart()}`
+        const imageToken = attachment.name ?? attachment.id
+        const visibleEditor =
+          selectedPageId === pageId && editorBoundPageIdRef.current === pageId ? editorRef.current : null
+        const nextContent =
+          visibleEditor
+            ? appendImageReferenceToEditor(visibleEditor, imageToken)
+            : appendImageReferenceToContent(fresh.content, imageToken)
         await updatePage({ ...fresh, content: nextContent })
-        if (selectedPageId === pageId && editorRef.current && editorBoundPageIdRef.current === pageId) {
-          editorRef.current.innerHTML = nextContent
-          linkifyEditorAutoLinksPreservingCaret(editorRef.current)
-          lastSyncedEditorHtmlRef.current = editorRef.current.innerHTML
+        if (visibleEditor) {
+          lastSyncedEditorHtmlRef.current = nextContent
         }
         markDataSaved()
         if (selectedNotebookIdRef.current === fresh.notebookId) {
@@ -2323,6 +2326,64 @@ function linkifyImgRefsInEditor(root: HTMLElement) {
     }
     textNode.parentNode?.replaceChild(frag, textNode)
   }
+}
+
+function appendImageReferenceToEditor(editor: HTMLDivElement, token: string): string {
+  trimTrailingEditorWhitespace(editor)
+  const block = document.createElement('div')
+  block.textContent = `[img:${token}]`
+  editor.appendChild(block)
+  linkifyImgRefsInEditor(block)
+
+  const selection = window.getSelection()
+  const range = document.createRange()
+  range.selectNodeContents(block)
+  range.collapse(false)
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+  editor.focus()
+
+  return editor.innerHTML
+}
+
+function appendImageReferenceToContent(content: string, token: string): string {
+  const reference = `<div>[img:${escapeHtml(token)}]</div>`
+  return `${content.trimEnd()}${reference}`
+}
+
+function trimTrailingEditorWhitespace(editor: HTMLElement) {
+  while (editor.lastChild) {
+    const node = editor.lastChild
+    if (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() === '') {
+      node.remove()
+      continue
+    }
+    if (node instanceof HTMLBRElement) {
+      node.remove()
+      continue
+    }
+    if (node instanceof HTMLElement && isEmptyEditorBlock(node)) {
+      node.remove()
+      continue
+    }
+    break
+  }
+}
+
+function isEmptyEditorBlock(node: HTMLElement): boolean {
+  if (!['DIV', 'P'].includes(node.tagName)) {
+    return false
+  }
+  return node.textContent?.trim() === '' && node.querySelector('img, video, iframe, a') === null
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 type ProcessedImage = {
