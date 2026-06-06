@@ -893,6 +893,7 @@ function App() {
     }
 
     const pageId = selectedPageId
+    const pasteMarker = insertImagePasteMarker(event.currentTarget)
     setPastingImage(true)
     try {
       const processed = await downscaleImage(file)
@@ -915,8 +916,11 @@ function App() {
           selectedPageId === pageId && editorBoundPageIdRef.current === pageId ? editorRef.current : null
         const nextContent =
           visibleEditor
-            ? appendImageReferenceToEditor(visibleEditor, imageToken)
+            ? insertImageReferenceAtPasteMarker(visibleEditor, pasteMarker, imageToken)
             : appendImageReferenceToContent(fresh.content, imageToken)
+        if (!visibleEditor && pasteMarker?.isConnected) {
+          pasteMarker.remove()
+        }
         await updatePage({ ...fresh, content: nextContent })
         if (visibleEditor) {
           lastSyncedEditorHtmlRef.current = nextContent
@@ -2328,53 +2332,93 @@ function linkifyImgRefsInEditor(root: HTMLElement) {
   }
 }
 
-function appendImageReferenceToEditor(editor: HTMLDivElement, token: string): string {
-  trimTrailingEditorWhitespace(editor)
-  const block = document.createElement('div')
-  block.textContent = `[img:${token}]`
-  editor.appendChild(block)
-  linkifyImgRefsInEditor(block)
-
+function insertImagePasteMarker(editor: HTMLDivElement): HTMLElement | null {
   const selection = window.getSelection()
-  const range = document.createRange()
-  range.selectNodeContents(block)
-  range.collapse(false)
+  if (!selection || selection.rangeCount === 0) {
+    return null
+  }
+  const range = selection.getRangeAt(0)
+  if (!editor.contains(range.commonAncestorContainer)) {
+    return null
+  }
+
+  const marker = document.createElement('span')
+  marker.dataset.imagePasteMarker = crypto.randomUUID()
+  marker.setAttribute('contenteditable', 'false')
+  marker.style.display = 'inline-block'
+  marker.style.width = '0'
+  marker.style.overflow = 'hidden'
+  marker.textContent = '\u200b'
+
+  range.deleteContents()
+  range.insertNode(marker)
+  const nextRange = document.createRange()
+  nextRange.setStartAfter(marker)
+  nextRange.collapse(true)
   selection?.removeAllRanges()
-  selection?.addRange(range)
+  selection?.addRange(nextRange)
+
+  return marker
+}
+
+function insertImageReferenceAtPasteMarker(
+  editor: HTMLDivElement,
+  marker: HTMLElement | null,
+  token: string,
+): string {
+  const anchor = createImageReferenceAnchor(token)
+  const insertAfter = marker?.isConnected ? marker : null
+
+  if (insertAfter) {
+    insertAfter.replaceWith(anchor)
+  } else {
+    insertImageReferenceAtCurrentSelection(editor, anchor)
+  }
+
+  placeCaretAfterNode(anchor)
   editor.focus()
 
   return editor.innerHTML
 }
 
+function insertImageReferenceAtCurrentSelection(editor: HTMLDivElement, anchor: HTMLAnchorElement) {
+  const selection = window.getSelection()
+  if (selection && selection.rangeCount > 0) {
+    const range = selection.getRangeAt(0)
+    if (editor.contains(range.commonAncestorContainer)) {
+      range.deleteContents()
+      range.insertNode(anchor)
+      return
+    }
+  }
+  editor.appendChild(anchor)
+}
+
+function createImageReferenceAnchor(token: string): HTMLAnchorElement {
+  const anchor = document.createElement('a')
+  anchor.className = 'editor-img-ref'
+  anchor.href = '#'
+  anchor.dataset.imgRef = token
+  anchor.setAttribute('contenteditable', 'false')
+  anchor.textContent = `[img:${token}]`
+  return anchor
+}
+
+function placeCaretAfterNode(node: Node) {
+  const selection = window.getSelection()
+  if (!selection) {
+    return
+  }
+  const range = document.createRange()
+  range.setStartAfter(node)
+  range.collapse(true)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
 function appendImageReferenceToContent(content: string, token: string): string {
-  const reference = `<div>[img:${escapeHtml(token)}]</div>`
-  return `${content.trimEnd()}${reference}`
-}
-
-function trimTrailingEditorWhitespace(editor: HTMLElement) {
-  while (editor.lastChild) {
-    const node = editor.lastChild
-    if (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() === '') {
-      node.remove()
-      continue
-    }
-    if (node instanceof HTMLBRElement) {
-      node.remove()
-      continue
-    }
-    if (node instanceof HTMLElement && isEmptyEditorBlock(node)) {
-      node.remove()
-      continue
-    }
-    break
-  }
-}
-
-function isEmptyEditorBlock(node: HTMLElement): boolean {
-  if (!['DIV', 'P'].includes(node.tagName)) {
-    return false
-  }
-  return node.textContent?.trim() === '' && node.querySelector('img, video, iframe, a') === null
+  const reference = `[img:${escapeHtml(token)}]`
+  return `${content}${reference}`
 }
 
 function escapeHtml(value: string): string {
