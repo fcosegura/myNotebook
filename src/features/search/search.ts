@@ -20,6 +20,33 @@ export type SearchResult = {
   score: number
 }
 
+function decodeHtmlEntities(value: string): string {
+  if (typeof document !== 'undefined') {
+    const textarea = document.createElement('textarea')
+    textarea.innerHTML = value
+    return textarea.value
+  }
+
+  return value
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+}
+
+export function htmlToSearchText(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/<\/(div|p|li|h[1-6]|blockquote)>/gi, ' ')
+      .replace(/<[^>]*>/g, ' '),
+  )
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function buildSearchIndex(notebooks: Notebook[], pages: Page[]) {
   const notebookMap = new Map(notebooks.map((notebook) => [notebook.id, notebook]))
 
@@ -39,7 +66,7 @@ export function buildSearchIndex(notebooks: Notebook[], pages: Page[]) {
       notebookId: page.notebookId,
       notebookTitle: notebookMap.get(page.notebookId)?.title ?? 'Sin libreta',
       pageTitle: page.title,
-      content: page.content,
+      content: htmlToSearchText(page.content),
       tags: page.tags.join(' '),
       updatedAt: page.updatedAt,
     })),
