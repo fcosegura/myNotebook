@@ -38,19 +38,20 @@ import {
 import { buildSearchIndex, querySearch, type SearchResult } from './features/search/search'
 import { createSalt, hashPin } from './features/session/session'
 import { lockVault, unlockVaultWithPin } from './features/session/vault'
+import { AppHeader } from './ui/AppHeader'
+import { LockScreen } from './ui/LockScreen'
+import { Sidebar } from './ui/Sidebar'
+import { EditorPanel } from './ui/EditorPanel'
 import {
-  BookmarkIcon,
-  CloudSaveIcon,
-  FolderIcon,
-  HeaderMenuIcon,
-  ListBulletIcon,
-  ListNumberIcon,
-  NotebookEmptyIcon,
-  PageEmptyIcon,
-  QuoteIcon,
-  RedoIcon,
-  UndoIcon,
-} from './ui/icons'
+  AppDialog,
+  ImageModal,
+  MovePageDialog,
+  SecretDialog,
+  type AlertDialogConfig,
+  type AppDialogState,
+  type ConfirmDialogConfig,
+  type TextDialogConfig,
+} from './ui/AppDialogs'
 import {
   appendImageReferenceToContent,
   blockquoteContainingRange,
@@ -77,20 +78,6 @@ function isNotebookArchived(notebook: Notebook): boolean {
 
 function isPageBookmarked(page: { tags: string[] }): boolean {
   return page.tags.includes(BOOKMARK_TAG)
-}
-
-function PageTreeTitle({ page }: { page: Page }) {
-  const bookmarked = isPageBookmarked(page)
-  return (
-    <span className="page-tree-label">
-      {bookmarked ? (
-        <span className="item-icon page-tree-bookmark-icon" aria-hidden="true" title="Marcada como favorita">
-          🔖
-        </span>
-      ) : null}
-      <span className="page-tree-title-text">{page.title}</span>
-    </span>
-  )
 }
 
 function formatLastSavedDisplay(ts: number): string {
@@ -1334,166 +1321,6 @@ function App() {
     resolver?.(value)
   }
 
-  function renderAppDialog() {
-    if (!appDialog) {
-      return null
-    }
-
-    const toneClass = appDialog.tone === 'danger' ? 'danger' : 'neutral'
-    const message = appDialog.message ?? ''
-
-    if (appDialog.kind === 'alert') {
-      return (
-        <section className="app-dialog-backdrop" role="presentation">
-          <div className={`app-dialog ${toneClass}`} role="alertdialog" aria-modal="true" aria-label={appDialog.title}>
-            <h2>{appDialog.title}</h2>
-            {message ? <p>{message}</p> : null}
-            <div className="app-dialog-actions">
-              <button type="button" className="primary" onClick={() => closeAppDialog(true)}>
-                {appDialog.confirmLabel ?? 'Entendido'}
-              </button>
-            </div>
-          </div>
-        </section>
-      )
-    }
-
-    if (appDialog.kind === 'confirm') {
-      return (
-        <section className="app-dialog-backdrop" role="presentation">
-          <div className={`app-dialog ${toneClass}`} role="dialog" aria-modal="true" aria-label={appDialog.title}>
-            <h2>{appDialog.title}</h2>
-            {message ? <p>{message}</p> : null}
-            <div className="app-dialog-actions">
-              <button type="button" onClick={() => closeAppDialog(false)}>
-                {appDialog.cancelLabel ?? 'Cancelar'}
-              </button>
-              <button type="button" className="primary" onClick={() => closeAppDialog(true)}>
-                {appDialog.confirmLabel}
-              </button>
-            </div>
-          </div>
-        </section>
-      )
-    }
-
-    return (
-      <section className="app-dialog-backdrop" role="presentation">
-        <div className={`app-dialog ${toneClass}`} role="dialog" aria-modal="true" aria-label={appDialog.title}>
-          <h2>{appDialog.title}</h2>
-          {message ? <p>{message}</p> : null}
-          <input
-            value={appDialogInput}
-            autoFocus
-            onChange={(event) => setAppDialogInput(event.target.value)}
-            placeholder={appDialog.placeholder ?? ''}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                closeAppDialog(appDialogInput.trim() || null)
-              }
-              if (event.key === 'Escape') {
-                closeAppDialog(null)
-              }
-            }}
-          />
-          <div className="app-dialog-actions">
-            <button type="button" onClick={() => closeAppDialog(null)}>
-              {appDialog.cancelLabel ?? 'Cancelar'}
-            </button>
-            <button type="button" className="primary" onClick={() => closeAppDialog(appDialogInput.trim() || null)}>
-              {appDialog.confirmLabel}
-            </button>
-          </div>
-        </div>
-      </section>
-    )
-  }
-
-  function renderSecretDialog() {
-    if (!secretDialog) {
-      return null
-    }
-
-    return (
-      <section className="secret-dialog-backdrop" role="presentation">
-        <div className="secret-dialog" role="dialog" aria-modal="true" aria-label={secretDialog.title}>
-          <h2>{secretDialog.title}</h2>
-          <input
-            value={secretInput}
-            type={secretVisible ? 'text' : 'password'}
-            autoFocus
-            onChange={(event) => setSecretInput(event.target.value)}
-            placeholder="Escribe la clave"
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                closeSecretDialog(secretInput.trim() || null)
-              }
-              if (event.key === 'Escape') {
-                closeSecretDialog(null)
-              }
-            }}
-          />
-          <label className="secret-visibility">
-            <input
-              type="checkbox"
-              checked={secretVisible}
-              onChange={(event) => setSecretVisible(event.target.checked)}
-            />
-            Mostrar clave
-          </label>
-          <div className="secret-dialog-actions">
-            <button type="button" onClick={() => closeSecretDialog(null)}>Cancelar</button>
-            <button type="button" onClick={() => closeSecretDialog(secretInput.trim() || null)}>
-              {secretDialog.confirmLabel}
-            </button>
-          </div>
-        </div>
-      </section>
-    )
-  }
-
-  function renderMovePageDialog() {
-    if (!movePageDialogOpen || !selectedPage) {
-      return null
-    }
-
-    const moveCandidates = pages.filter((page) => page.id !== selectedPage.id)
-
-    return (
-      <section className="app-dialog-backdrop" role="presentation">
-        <div className="app-dialog" role="dialog" aria-modal="true" aria-label="Mover pagina">
-          <h2>Mover pagina</h2>
-          <p>
-            Selecciona antes de que pagina quieres mover <strong>{selectedPage.title}</strong>.
-          </p>
-          <label className="app-dialog-field">
-            <span>Antes de la pagina</span>
-            <select
-              className="page-combo"
-              value={moveBeforePageId}
-              onChange={(event) => setMoveBeforePageId(event.target.value)}
-            >
-              <option value="">Al final</option>
-              {moveCandidates.map((page) => (
-                <option key={page.id} value={page.id}>
-                  {page.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="app-dialog-actions">
-            <button type="button" onClick={closeMovePageDialog}>
-              Cancelar
-            </button>
-            <button type="button" className="primary" onClick={() => void handleMovePageConfirm()}>
-              Mover
-            </button>
-          </div>
-        </div>
-      </section>
-    )
-  }
-
   if (!user) {
     return <main className="app-shell">Inicializando...</main>
   }
@@ -1501,49 +1328,38 @@ function App() {
   if (!unlocked) {
     return (
       <>
-        <main className="app-shell lock-screen">
-          <h1>Libreta local</h1>
-          <p>Tu sesion se guarda solo en este navegador.</p>
-          <div className="pin-entry">
-            <div
-              className="pin-display"
-              role="status"
-              aria-live="polite"
-              aria-label={`${pinInput.length} digitos ingresados`}
-            >
-              {pinInput.length > 0 ? (
-                <span className="pin-display-dots">{'\u2022'.repeat(pinInput.length)}</span>
-              ) : (
-                <span className="pin-display-placeholder">Toca los numeros o escribe con el teclado</span>
-              )}
-            </div>
-            <div className="pin-keypad" role="group" aria-label="Teclado numerico">
-              {(['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const).map((digit) => (
-                <button key={digit} type="button" className="pin-key" onClick={() => appendLockPinDigit(digit)}>
-                  {digit}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="pin-key pin-key-wide"
-                onClick={removeLastLockPinDigit}
-                aria-label="Borrar ultimo digito"
-              >
-                Borrar
-              </button>
-              <button type="button" className="pin-key" onClick={() => appendLockPinDigit('0')}>
-                0
-              </button>
-            </div>
-          </div>
-          <button type="button" onClick={user.sessionConfig ? handleUnlock : handleSetupPin}>
-            {user.sessionConfig ? 'Desbloquear' : 'Configurar PIN local'}
-          </button>
-          {pinError ? <p className="error">{pinError}</p> : null}
-        </main>
-        {renderSecretDialog()}
-        {renderAppDialog()}
-        {renderMovePageDialog()}
+        <LockScreen
+          user={user}
+          pinInput={pinInput}
+          pinError={pinError}
+          onAppendDigit={appendLockPinDigit}
+          onRemoveLastDigit={removeLastLockPinDigit}
+          onUnlock={() => void handleUnlock()}
+          onSetupPin={() => void handleSetupPin()}
+        />
+        <SecretDialog
+          dialog={secretDialog}
+          input={secretInput}
+          visible={secretVisible}
+          onInputChange={setSecretInput}
+          onVisibleChange={setSecretVisible}
+          onClose={closeSecretDialog}
+        />
+        <AppDialog
+          dialog={appDialog}
+          input={appDialogInput}
+          onInputChange={setAppDialogInput}
+          onClose={closeAppDialog}
+        />
+        <MovePageDialog
+          open={movePageDialogOpen}
+          selectedPage={selectedPage}
+          pages={pages}
+          moveBeforePageId={moveBeforePageId}
+          onMoveBeforePageIdChange={setMoveBeforePageId}
+          onCancel={closeMovePageDialog}
+          onConfirm={() => void handleMovePageConfirm()}
+        />
       </>
     )
   }
@@ -1551,462 +1367,129 @@ function App() {
   return (
     <>
       <main className="app-shell">
-        <div className="app-header-block">
-          <header className="app-header">
-            <div className="app-header-start">
-              <h1>Libreta local</h1>
-              <label className="search-input-wrap" aria-label="Busqueda global">
-                <span className="search-icon" aria-hidden="true">🔎</span>
-                <input
-                  className="search-input"
-                  placeholder="Busqueda global inteligente..."
-                  value={searchTerm}
-                  onChange={(event) => handleSearch(event.target.value)}
-                />
-              </label>
-            </div>
-            <button
-              type="button"
-              className={`app-header-actions-btn${actionsOpen ? ' is-open' : ''}`}
-              onClick={() => setActionsOpen((value) => !value)}
-              aria-expanded={actionsOpen}
-              aria-haspopup="true"
-              aria-label="Acciones y configuracion"
-              title="Acciones"
-            >
-              <HeaderMenuIcon />
-            </button>
-          </header>
-          {actionsOpen ? (
-          <section className="actions-menu">
-            <p className="actions-menu-meta" role="status">
-              {lastSavedAt !== null ? (
-                <>
-                  Ultimo guardado local:{' '}
-                  <time dateTime={new Date(lastSavedAt).toISOString()}>
-                    {formatLastSavedDisplay(lastSavedAt)}
-                  </time>
-                </>
-              ) : (
-                'Aun no hay guardados en esta sesion.'
-              )}
-            </p>
-            <button type="button" onClick={() => void handleExportEncryptedBackup()}>Exportar cifrado</button>
-            <button type="button" onClick={() => void handleImportEncryptedBackup()}>Importar cifrado</button>
-            <button type="button" onClick={() => void handlePinChange()}>Cambiar PIN</button>
-            <button type="button" onClick={() => setNotebooksHidden((value) => !value)}>
-              {notebooksHidden ? 'Mostrar barra de libretas' : 'Ocultar barra de libretas'}
-            </button>
-            <button
-              type="button"
-              className="actions-logout-button"
-              disabled={logoutPending || forceSavePending || pastingImage}
-              onClick={() => void handleLogout()}
-              title="Guarda la nota actual, bloquea la sesion y vuelve al PIN (los datos quedan en este dispositivo)"
-            >
-              {logoutPending ? 'Cerrando sesion...' : 'Cerrar sesion'}
-            </button>
-          </section>
-          ) : null}
-        </div>
-        {backupStatus ? <p className={`backup-status ${backupStatusType}`}>{backupStatus}</p> : null}
+        <AppHeader
+          actionsOpen={actionsOpen}
+          searchTerm={searchTerm}
+          lastSavedAt={lastSavedAt}
+          notebooksHidden={notebooksHidden}
+          logoutPending={logoutPending}
+          forceSavePending={forceSavePending}
+          pastingImage={pastingImage}
+          searchResults={searchResults}
+          backupStatus={backupStatus}
+          backupStatusType={backupStatusType}
+          onSearch={handleSearch}
+          onToggleActions={() => setActionsOpen((value) => !value)}
+          onExportEncryptedBackup={() => void handleExportEncryptedBackup()}
+          onImportEncryptedBackup={() => void handleImportEncryptedBackup()}
+          onPinChange={() => void handlePinChange()}
+          onToggleNotebooksHidden={() => setNotebooksHidden((value) => !value)}
+          onLogout={() => void handleLogout()}
+          onOpenSearchResult={(result) => void openSearchResult(result)}
+          formatLastSavedDisplay={formatLastSavedDisplay}
+        />
 
-      {searchResults.length > 0 ? (
-        <section className="search-results">
-          {searchResults.map((result) => (
-            <button key={result.pageId} type="button" onClick={() => openSearchResult(result)}>
-              <strong>{result.pageTitle}</strong> en {result.notebookTitle}
-              <span>{result.snippet}</span>
-            </button>
-          ))}
+        <section className={`layout master-detail-layout${notebooksHidden ? ' sidebar-hidden' : notebooksCollapsed ? ' sidebar-collapsed' : ''}`}>
+          <Sidebar
+            notebooksHidden={notebooksHidden}
+            notebooksCollapsed={notebooksCollapsed}
+            sidebarPanelMode={sidebarPanelMode}
+            sidebarView={sidebarView}
+            selectedNotebookId={selectedNotebookId}
+            selectedPageId={selectedPageId}
+            selectedNotebook={selectedNotebook}
+            pages={pages}
+            sidebarNotebooks={sidebarNotebooks}
+            notebookSidebarMode={notebookSidebarMode}
+            bookmarkTree={bookmarkTree}
+            notebookMenuId={notebookMenuId}
+            pageMenuId={pageMenuId}
+            onExpandNotebooks={() => setNotebooksCollapsed(false)}
+            onCollapseNotebooks={() => setNotebooksCollapsed(true)}
+            onSidebarPanelModeChange={setSidebarPanelMode}
+            onSidebarViewChange={setSidebarView}
+            onNotebookSidebarModeChange={handleNotebookSidebarModeChange}
+            onNotebookCreate={handleNotebookCreate}
+            onPageCreate={handlePageCreate}
+            onSelectNotebook={(notebookId) => {
+              setSelectedNotebookId(notebookId)
+              setSidebarView('pages')
+              void refreshPages(notebookId)
+            }}
+            onSelectPage={setSelectedPageId}
+            onToggleNotebookMenu={(notebookId) => setNotebookMenuId((value) => (value === notebookId ? null : notebookId))}
+            onTogglePageMenu={(pageId) => setPageMenuId((value) => (value === pageId ? null : pageId))}
+            onNotebookRename={(notebook) => void handleNotebookRename(notebook)}
+            onNotebookArchive={(notebook) => void handleNotebookArchive(notebook)}
+            onNotebookUnarchive={(notebook) => void handleNotebookUnarchive(notebook)}
+            onNotebookDelete={(notebook) => void handleNotebookDelete(notebook)}
+            onPageBookmark={(page) => void handlePageBookmark(page)}
+            onPageMove={openMovePageDialog}
+            onPageDelete={(page) => void handlePageDelete(page)}
+            onBookmarkNotebookToggle={toggleBookmarkNotebookExpanded}
+            isBookmarkNotebookExpanded={isBookmarkNotebookExpanded}
+            onOpenBookmarkPage={(pageId) => void openBookmarkPage(pageId)}
+            isNotebookArchived={isNotebookArchived}
+            isPageBookmarked={isPageBookmarked}
+          />
+
+          <EditorPanel
+            selectedNotebookId={selectedNotebookId}
+            selectedPage={selectedPage}
+            selectedPageAttachments={selectedPageAttachments}
+            editorRef={editorRef}
+            editorTitleRef={editorTitleRef}
+            isCurrentPageBookmarked={isCurrentPageBookmarked}
+            lastSavedAt={lastSavedAt}
+            forceSavePending={forceSavePending}
+            pastingImage={pastingImage}
+            formatMenuOpen={formatMenuOpen}
+            textColorPalette={TEXT_COLOR_PALETTE}
+            onPageTitleChange={(value) => void handlePageFieldChange('title', value)}
+            onPageBookmark={() => void handlePageBookmark()}
+            onForceSaveNote={() => void forceSaveNote()}
+            formatLastSavedDisplay={formatLastSavedDisplay}
+            onApplyEditorHistory={applyEditorHistory}
+            onApplyEditorCommand={applyEditorCommand}
+            onToggleFormatMenu={() => setFormatMenuOpen((value) => !value)}
+            onApplySelectionFontSizeStep={applySelectionFontSizeStep}
+            onApplyEditorBlockquote={applyEditorBlockquote}
+            onEditorInput={handleEditorInput}
+            onEditorRichTextClick={handleEditorRichTextClick}
+            onProcessImagePaste={(event) => { void processImagePaste(event) }}
+            onOpenAttachmentModal={openAttachmentModal}
+            onCopyAttachmentReference={(attachment) => void copyAttachmentReference(attachment)}
+            onRemoveAttachment={(attachmentId) => void removeAttachment(attachmentId)}
+          />
         </section>
-      ) : null}
-
-      <section className={`layout master-detail-layout${notebooksHidden ? ' sidebar-hidden' : notebooksCollapsed ? ' sidebar-collapsed' : ''}`}>
-        {!notebooksHidden ? (
-          <aside className={`column notebooks master-sidebar${notebooksCollapsed ? ' collapsed' : ''}`}>
-          {notebooksCollapsed ? (
-            <button
-              type="button"
-              className="collapse-toggle collapsed-toggle"
-              onClick={() => setNotebooksCollapsed(false)}
-              aria-label="Expandir libretas"
-              title="Expandir libretas"
-            >
-              <span className="collapsed-label">Libretas</span>
-              <span aria-hidden="true">›</span>
-            </button>
-          ) : (
-            <>
-              <div className="sidebar-panel-switch" role="tablist" aria-label="Vista de la barra lateral">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={sidebarPanelMode === 'library'}
-                  className={`sidebar-panel-switch-btn${sidebarPanelMode === 'library' ? ' is-active' : ''}`}
-                  title="Libretas y paginas"
-                  aria-label="Libretas y paginas"
-                  onClick={() => setSidebarPanelMode('library')}
-                >
-                  <FolderIcon />
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={sidebarPanelMode === 'bookmarks'}
-                  className={`sidebar-panel-switch-btn${sidebarPanelMode === 'bookmarks' ? ' is-active' : ''}`}
-                  title="Favoritos"
-                  aria-label="Favoritos"
-                  onClick={() => setSidebarPanelMode('bookmarks')}
-                >
-                  <BookmarkIcon filled={sidebarPanelMode === 'bookmarks'} />
-                </button>
-              </div>
-              {sidebarPanelMode === 'bookmarks' ? (
-                <div className="notebook-tree bookmarks-tree" aria-label="Favoritos por libreta">
-                  <h2 className="sidebar-section-label">Favoritos</h2>
-                  {bookmarkTree.length === 0 ? (
-                    <p className="notebook-sidebar-empty">No hay paginas con bookmark.</p>
-                  ) : (
-                    bookmarkTree.map(({ notebook, pages }) => {
-                      const expanded = isBookmarkNotebookExpanded(notebook.id)
-                      return (
-                        <div key={notebook.id} className="bookmark-notebook-group">
-                          <div className="notebook-tree-header list-item-shell">
-                            <button
-                              type="button"
-                              className="notebook-tree-folder-btn"
-                              aria-expanded={expanded}
-                              onClick={() => toggleBookmarkNotebookExpanded(notebook.id)}
-                            >
-                              <span className="notebook-tree-chevron" aria-hidden="true">
-                                {expanded ? '▾' : '›'}
-                              </span>
-                              <span className="item-icon notebook-folder-icon" aria-hidden="true">
-                                📁
-                              </span>
-                              <span className="notebook-tree-name">{notebook.title}</span>
-                            </button>
-                          </div>
-                          {expanded ? (
-                            <ul className="pages-tree" aria-label={`Paginas favoritas de ${notebook.title}`}>
-                              {pages.map((page) => (
-                                <li
-                                  key={page.id}
-                                  className={`page-tree-item list-item-shell${page.id === selectedPageId ? ' active' : ''}`}
-                                >
-                                  <button
-                                    type="button"
-                                    className={`page-tree-link${page.id === selectedPageId ? ' active' : ''}`}
-                                    onClick={() => void openBookmarkPage(page.id)}
-                                  >
-                                    <PageTreeTitle page={page} />
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : null}
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              ) : sidebarView === 'pages' && selectedNotebookId ? (
-            <>
-              <button type="button" className="sidebar-back-button" onClick={() => setSidebarView('notebooks')}>
-                <span aria-hidden="true">‹</span> Libretas
-              </button>
-              <div className="notebook-tree">
-                <div className="notebook-tree-header list-item-shell">
-                  <span className="notebook-tree-folder">
-                    <span className="item-icon notebook-folder-icon" aria-hidden="true">📁</span>
-                    <span className="notebook-tree-name">{selectedNotebook?.title ?? 'Libreta'}</span>
-                  </span>
-                  <button type="button" className="tree-hover-action new-page-action" aria-label="Nueva pagina" title="Nueva pagina" onClick={handlePageCreate}>+</button>
-                </div>
-                <ul className="pages-tree" aria-label="Paginas de la libreta">
-                  {pages.map((page) => (
-                    <li key={page.id} className={`page-tree-item list-item-shell${page.id === selectedPageId ? ' active' : ''}`}>
-                      <button type="button" className={`page-tree-link${page.id === selectedPageId ? ' active' : ''}`} onClick={() => setSelectedPageId(page.id)}>
-                        <PageTreeTitle page={page} />
-                      </button>
-                      <button type="button" className="tree-hover-action tree-menu-action" aria-label={`Opciones de ${page.title}`} title="Opciones" onClick={(event) => { event.stopPropagation(); setPageMenuId((value) => (value === page.id ? null : page.id)) }}>···</button>
-                      {pageMenuId === page.id ? (
-                        <div className="context-menu page-context-menu" onClick={(event) => event.stopPropagation()}>
-                          <button type="button" onClick={() => void handlePageBookmark(page)}>Bookmark</button>
-                          <button type="button" onClick={openMovePageDialog}>Mover</button>
-                          <button type="button" onClick={() => void handlePageDelete(page)}>Eliminar</button>
-                        </div>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-                {pages.length === 0 ? <p className="notebook-sidebar-empty">Sin paginas. Usa + para crear una.</p> : null}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="column-title section-title">
-                <div className="column-title-left">
-                  <button
-                    type="button"
-                    className="collapse-toggle"
-                    onClick={() => setNotebooksCollapsed(true)}
-                    aria-label="Colapsar libretas"
-                    title="Colapsar libretas"
-                  >
-                    <span aria-hidden="true">‹</span>
-                  </button>
-                  <h2>Libretas</h2>
-                </div>
-                <button type="button" className="new-notebook-action" aria-label="Nueva libreta" title="Nueva libreta" onClick={handleNotebookCreate}>+</button>
-              </div>
-              <div className="notebook-sidebar-tabs" role="tablist" aria-label="Vista de libretas">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={notebookSidebarMode === 'active'}
-                  className={`notebook-sidebar-tab${notebookSidebarMode === 'active' ? ' is-active' : ''}`}
-                  onClick={() => handleNotebookSidebarModeChange('active')}
-                >
-                  Activas
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={notebookSidebarMode === 'archived'}
-                  className={`notebook-sidebar-tab${notebookSidebarMode === 'archived' ? ' is-active' : ''}`}
-                  onClick={() => handleNotebookSidebarModeChange('archived')}
-                >
-                  Archivadas
-                </button>
-              </div>
-              {sidebarNotebooks.length === 0 ? (
-                <p className="notebook-sidebar-empty">
-                  {notebookSidebarMode === 'archived'
-                    ? 'No hay libretas archivadas.'
-                    : 'No hay libretas activas. Crea una nueva o mira en Archivadas.'}
-                </p>
-              ) : null}
-              {sidebarNotebooks.map((notebook) => (
-                <article key={notebook.id} className={`list-item-shell sidebar-notebook-item${notebook.id === selectedNotebookId ? ' active' : ''}`}>
-                  <button
-                    type="button"
-                    className={`list-item row-item${notebook.id === selectedNotebookId ? ' active' : ''}`}
-                    onClick={() => {
-                      setSelectedNotebookId(notebook.id)
-                      setSidebarView('pages')
-                      void refreshPages(notebook.id)
-                    }}
-                  >
-                    <span className="item-main">
-                      <span className="item-icon" aria-hidden="true">📒</span>
-                      <span>{notebook.title}</span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="item-menu-button tree-hover-action"
-                    aria-label={`Acciones para ${notebook.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setNotebookMenuId((value) => (value === notebook.id ? null : notebook.id))
-                    }}
-                  >
-                    ···
-                  </button>
-                  {notebookMenuId === notebook.id ? (
-                    <div className="context-menu" onClick={(event) => event.stopPropagation()}>
-                      <button type="button" onClick={() => void handleNotebookRename(notebook)}>Renombrar</button>
-                      {isNotebookArchived(notebook) ? (
-                        <button type="button" onClick={() => void handleNotebookUnarchive(notebook)}>Desarchivar</button>
-                      ) : (
-                        <button type="button" onClick={() => void handleNotebookArchive(notebook)}>Archivar</button>
-                      )}
-                      <button type="button" onClick={() => void handleNotebookDelete(notebook)}>Eliminar</button>
-                    </div>
-                  ) : null}
-                </article>
-              ))}
-            </>
-              )}
-            </>
-          )}
-          </aside>
-        ) : null}
-
-        <section className="workspace-panel">
-          <article className="column editor master-detail-main">
-            {!selectedNotebookId ? (
-              <div className="workspace-empty-state" role="status">
-                <NotebookEmptyIcon />
-                <p className="workspace-empty-text">
-                  Selecciona una libreta en la barra lateral, o cambia entre Activas y Archivadas.
-                </p>
-              </div>
-            ) : !selectedPage ? (
-            <div className="workspace-empty-state" role="status">
-              <PageEmptyIcon />
-              <p className="workspace-empty-text">Selecciona una pagina para editar.</p>
-            </div>
-          ) : (
-            <>
-              <div className="editor-header">
-                <input
-                  ref={editorTitleRef}
-                  className="editor-title"
-                  value={selectedPage.title}
-                  onChange={(event) => {
-                    void handlePageFieldChange('title', event.target.value)
-                  }}
-                />
-                <div className="editor-header-actions">
-                  <button
-                    type="button"
-                    className={`editor-icon-button bookmark-icon${isCurrentPageBookmarked ? ' active' : ''}`}
-                    aria-pressed={isCurrentPageBookmarked}
-                    onClick={() => void handlePageBookmark()}
-                    title={isCurrentPageBookmarked ? 'Quitar bookmark' : 'Marcar pagina'}
-                    aria-label={isCurrentPageBookmarked ? 'Quitar bookmark' : 'Marcar pagina'}
-                  >
-                    <BookmarkIcon filled={isCurrentPageBookmarked} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`editor-icon-button save-icon${lastSavedAt !== null ? ' saved' : ''}`}
-                    disabled={forceSavePending || pastingImage}
-                    onClick={() => void forceSaveNote()}
-                    title={
-                      forceSavePending
-                        ? 'Guardando...'
-                        : lastSavedAt !== null
-                          ? `Guardado ${formatLastSavedDisplay(lastSavedAt)}`
-                          : 'Guardar nota (Ctrl/Cmd + S)'
-                    }
-                    aria-label="Guardar nota"
-                  >
-                    <CloudSaveIcon saving={forceSavePending} saved={lastSavedAt !== null} />
-                  </button>
-                </div>
-              </div>
-              <section className="editor-richtext-shell" aria-label="Editor de contenido enriquecido">
-                <div className="editor-format-toolbar editor-format-toolbar-compact">
-                  <div className="editor-history-group" role="group" aria-label="Deshacer y rehacer">
-                    <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorHistory('undo')} title="Deshacer (Ctrl/Cmd+Z)" aria-label="Deshacer"><UndoIcon /></button>
-                    <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorHistory('redo')} title="Rehacer (Ctrl/Cmd+Shift+Z)" aria-label="Rehacer"><RedoIcon /></button>
-                  </div>
-                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('bold')} title="Negrita (Ctrl/Cmd+B)" aria-label="Negrita"><strong>B</strong></button>
-                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('italic')} title="Cursiva (Ctrl/Cmd+I)" aria-label="Cursiva"><em>I</em></button>
-                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('insertUnorderedList')} title="Lista con viñetas" aria-label="Lista con viñetas"><ListBulletIcon /></button>
-                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('insertOrderedList')} title="Lista numerada" aria-label="Lista numerada"><ListNumberIcon /></button>
-                  <div className="editor-format-menu-wrap" onClick={(event) => event.stopPropagation()}>
-                    <button
-                      type="button"
-                      className={`toolbar-format-trigger${formatMenuOpen ? ' is-open' : ''}`}
-                      onClick={() => setFormatMenuOpen((value) => !value)}
-                      aria-expanded={formatMenuOpen}
-                      aria-haspopup="menu"
-                      aria-label="Opciones de formato"
-                    >
-                      Formato
-                    </button>
-                    {formatMenuOpen ? (
-                      <div className="editor-format-popover" role="menu" aria-label="Opciones de formato">
-                        <div className="format-popover-row" role="group" aria-label="Tamano del texto">
-                          <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => applySelectionFontSizeStep(-3)} title="Reducir tamano" aria-label="Reducir tamano del texto">A−</button>
-                          <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => applySelectionFontSizeStep(3)} title="Aumentar tamano" aria-label="Aumentar tamano del texto">A+</button>
-                        </div>
-                        <div className="format-popover-row" role="group" aria-label="Estilos secundarios">
-                          <button type="button" className="toolbar-icon-btn" onClick={applyEditorBlockquote} title="Cita" aria-label="Alternar cita"><QuoteIcon /></button>
-                          <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('underline')} title="Subrayado" aria-label="Subrayado"><span className="toolbar-underline">U</span></button>
-                          <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('strikeThrough')} title="Tachado" aria-label="Tachado"><span className="toolbar-strike">S</span></button>
-                        </div>
-                        <div className="editor-color-palette" role="group" aria-label="Color del texto">
-                          {TEXT_COLOR_PALETTE.map((color) => (
-                            <button key={color} type="button" className="color-swatch" style={{ backgroundColor: color }} onClick={() => applyEditorCommand('foreColor', color)} title={`Color ${color}`} aria-label={`Aplicar color ${color}`} />
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-                <div
-                  ref={editorRef}
-                  className="editor-richtext"
-                  contentEditable
-                  suppressContentEditableWarning
-                  data-placeholder="Escribe tu nota aqui. Puedes pegar imagenes desde portapapeles."
-                  onInput={handleEditorInput}
-                  onClick={handleEditorRichTextClick}
-                  onPaste={(event) => { void processImagePaste(event) }}
-                />
-                <footer className="editor-footer-tip" role="status">
-                  {pastingImage ? 'Procesando screenshot...' : 'Tip: pega screenshot con Ctrl/Cmd + V'}
-                </footer>
-              </section>
-              <section className="attachments">
-                <h3>Imagenes de la pagina</h3>
-                <div className="attachments-content">
-                  {selectedPageAttachments.length === 0 ? (
-                    <p className="attachments-empty">No hay imagenes todavia.</p>
-                  ) : (
-                    <div className="attachment-grid">
-                      {selectedPageAttachments.map((attachment) => (
-                        <figure key={attachment.id}>
-                          <button
-                            type="button"
-                            className="attachment-preview-button"
-                            title="Abrir imagen"
-                            onClick={() => openAttachmentModal(attachment)}
-                          >
-                            <img src={URL.createObjectURL(attachment.blob)} alt={attachment.name ?? 'Adjunto pegado'} />
-                          </button>
-                          <figcaption>
-                            <div className="attachment-meta">
-                              <strong>{attachment.name ?? 'imagen-sin-nombre'}</strong>
-                              <small>{(attachment.sizeBytes / 1024).toFixed(1)} KB</small>
-                            </div>
-                            <div className="attachment-actions">
-                              <button type="button" onClick={() => void copyAttachmentReference(attachment)}>
-                                Copiar ref
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void removeAttachment(attachment.id)
-                                }}
-                              >
-                                Eliminar
-                              </button>
-                            </div>
-                          </figcaption>
-                        </figure>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </section>
-            </>
-          )}
-          </article>
-        </section>
-      </section>
       </main>
-      {renderSecretDialog()}
-      {renderAppDialog()}
-      {renderMovePageDialog()}
-      {imageModalAttachment && imageModalUrl ? (
-        <section className="image-modal-backdrop" role="presentation" onClick={closeAttachmentModal}>
-          <figure className="image-modal" onClick={closeAttachmentModal}>
-            <img src={imageModalUrl} alt={imageModalAttachment.name ?? 'Imagen adjunta'} />
-            <figcaption>
-              {imageModalAttachment.name ?? imageModalAttachment.id} (click para cerrar)
-            </figcaption>
-          </figure>
-        </section>
-      ) : null}
+      <SecretDialog
+        dialog={secretDialog}
+        input={secretInput}
+        visible={secretVisible}
+        onInputChange={setSecretInput}
+        onVisibleChange={setSecretVisible}
+        onClose={closeSecretDialog}
+      />
+      <AppDialog
+        dialog={appDialog}
+        input={appDialogInput}
+        onInputChange={setAppDialogInput}
+        onClose={closeAppDialog}
+      />
+      <MovePageDialog
+        open={movePageDialogOpen}
+        selectedPage={selectedPage}
+        pages={pages}
+        moveBeforePageId={moveBeforePageId}
+        onMoveBeforePageIdChange={setMoveBeforePageId}
+        onCancel={closeMovePageDialog}
+        onConfirm={() => void handleMovePageConfirm()}
+      />
+      <ImageModal attachment={imageModalAttachment} imageUrl={imageModalUrl} onClose={closeAttachmentModal} />
     </>
   )
+
 }
 
 export default App
@@ -2016,58 +1499,6 @@ type ProcessedImage = {
   width: number
   height: number
 }
-
-type DialogTone = 'neutral' | 'danger'
-
-type BaseAppDialog = {
-  title: string
-  message?: string
-  confirmLabel?: string
-  cancelLabel?: string
-  tone?: DialogTone
-}
-
-type TextDialogConfig = {
-  title: string
-  message?: string
-  confirmLabel: string
-  cancelLabel?: string
-  placeholder?: string
-  initialValue?: string
-  tone?: DialogTone
-}
-
-type ConfirmDialogConfig = {
-  title: string
-  message?: string
-  confirmLabel: string
-  cancelLabel?: string
-  tone?: DialogTone
-}
-
-type AlertDialogConfig = {
-  title: string
-  message?: string
-  confirmLabel?: string
-  tone?: DialogTone
-}
-
-type TextAppDialog = BaseAppDialog & {
-  kind: 'text'
-  confirmLabel: string
-  placeholder?: string
-}
-
-type ConfirmAppDialog = BaseAppDialog & {
-  kind: 'confirm'
-  confirmLabel: string
-}
-
-type AlertAppDialog = BaseAppDialog & {
-  kind: 'alert'
-}
-
-type AppDialogState = TextAppDialog | ConfirmAppDialog | AlertAppDialog
 
 async function downscaleImage(file: File): Promise<ProcessedImage> {
   const dataUrl = await readAsDataUrl(file)
