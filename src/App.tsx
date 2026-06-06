@@ -913,6 +913,11 @@ function App() {
         const referenceLine = `\n[img:${attachment.name ?? attachment.id}]`
         const nextContent = `${fresh.content}${fresh.content.endsWith('\n') || !fresh.content ? '' : '\n'}${referenceLine.trimStart()}`
         await updatePage({ ...fresh, content: nextContent })
+        if (selectedPageId === pageId && editorRef.current && editorBoundPageIdRef.current === pageId) {
+          editorRef.current.innerHTML = nextContent
+          linkifyEditorAutoLinksPreservingCaret(editorRef.current)
+          lastSyncedEditorHtmlRef.current = editorRef.current.innerHTML
+        }
         markDataSaved()
         if (selectedNotebookIdRef.current === fresh.notebookId) {
           await refreshPages(fresh.notebookId)

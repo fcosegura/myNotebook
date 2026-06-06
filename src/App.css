@@ -186,8 +186,10 @@
 }
 
 .actions-menu {
-  align-self: flex-end;
-  width: min(100%, 320px);
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(440px, calc(100vw - 24px));
   display: grid;
   gap: 6px;
   padding: 8px;
@@ -1158,6 +1160,8 @@
   }
 
   .actions-menu {
-    width: 100%;
+    left: 0;
+    right: 0;
+    width: auto;
   }
 }
