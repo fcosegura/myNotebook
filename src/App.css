@@ -39,11 +39,6 @@
   box-sizing: border-box;
 }
 
-.app-shell.compact {
-  gap: 8px;
-  padding: 10px;
-}
-
 .app-shell button,
 .app-shell input,
 .app-shell select {
@@ -286,6 +281,14 @@
   display: grid;
   grid-template-columns: minmax(220px, 284px) minmax(0, 1fr);
   gap: 10px;
+}
+
+.master-detail-layout.sidebar-collapsed {
+  grid-template-columns: 48px minmax(0, 1fr);
+}
+
+.master-detail-layout.sidebar-hidden {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .column,
@@ -1127,6 +1130,11 @@
   }
 
   .master-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .master-detail-layout.sidebar-collapsed,
+  .master-detail-layout.sidebar-hidden {
     grid-template-columns: 1fr;
   }
 

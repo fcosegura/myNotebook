@@ -118,7 +118,6 @@ function App() {
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [notebooksHidden, setNotebooksHidden] = useState(false)
   const [pagesHidden, setPagesHidden] = useState(false)
-  const [densityMode, setDensityMode] = useState<'compact' | 'comfortable'>('comfortable')
   const [notebookMenuId, setNotebookMenuId] = useState<string | null>(null)
   const [pageMenuId, setPageMenuId] = useState<string | null>(null)
   const [sidebarView, setSidebarView] = useState<'notebooks' | 'pages'>('notebooks')
@@ -1484,7 +1483,7 @@ function App() {
   if (!unlocked) {
     return (
       <>
-        <main className={`app-shell ${densityMode} lock-screen`}>
+        <main className="app-shell lock-screen">
           <h1>Libreta local</h1>
           <p>Tu sesion se guarda solo en este navegador.</p>
           <div className="pin-entry">
@@ -1533,7 +1532,7 @@ function App() {
 
   return (
     <>
-      <main className={`app-shell ${densityMode}`}>
+      <main className="app-shell">
         <div className="app-header-block">
           <header className="app-header">
             <div className="app-header-start">
@@ -1585,12 +1584,6 @@ function App() {
             </button>
             <button
               type="button"
-              onClick={() => setDensityMode((mode) => (mode === 'comfortable' ? 'compact' : 'comfortable'))}
-            >
-              {densityMode === 'comfortable' ? 'Usar modo compacto' : 'Usar modo comodo'}
-            </button>
-            <button
-              type="button"
               className="actions-logout-button"
               disabled={logoutPending || forceSavePending || pastingImage}
               onClick={() => void handleLogout()}
@@ -1614,7 +1607,7 @@ function App() {
         </section>
       ) : null}
 
-      <section className="layout master-detail-layout">
+      <section className={`layout master-detail-layout${notebooksHidden ? ' sidebar-hidden' : notebooksCollapsed ? ' sidebar-collapsed' : ''}`}>
         {!notebooksHidden ? (
           <aside className={`column notebooks master-sidebar${notebooksCollapsed ? ' collapsed' : ''}`}>
           {notebooksCollapsed ? (
