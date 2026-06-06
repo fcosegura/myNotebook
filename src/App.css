@@ -581,9 +581,10 @@
 }
 
 .page-context-menu {
-  top: 0;
-  right: calc(100% + 8px);
+  top: calc(100% + 4px);
+  right: 0;
   left: auto;
+  z-index: 40;
 }
 
 .context-menu button {
