@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -47,11 +48,11 @@ import {
   ImageModal,
   MovePageDialog,
   SecretDialog,
-  type AlertDialogConfig,
-  type AppDialogState,
-  type ConfirmDialogConfig,
-  type TextDialogConfig,
 } from './ui/AppDialogs'
+import { useAppDialogs } from './ui/hooks/useAppDialogs'
+import { useImageModal } from './ui/hooks/useImageModal'
+import { useInactivityLock } from './ui/hooks/useInactivityLock'
+import { useSidebarState } from './ui/hooks/useSidebarState'
 import {
   appendImageReferenceToContent,
   blockquoteContainingRange,
@@ -94,7 +95,6 @@ function App() {
   const [pinError, setPinError] = useState('')
   const [unlockAttempts, setUnlockAttempts] = useState(0)
   const [unlockBlockedUntil, setUnlockBlockedUntil] = useState(0)
-  const inactivityTimerRef = useRef<number | null>(null)
   const submitLockScreenRef = useRef<() => void>(() => {})
 
   const [notebooks, setNotebooks] = useState<Notebook[]>([])
@@ -112,35 +112,56 @@ function App() {
   const [logoutPending, setLogoutPending] = useState(false)
   const [backupStatus, setBackupStatus] = useState('')
   const [backupStatusType, setBackupStatusType] = useState<'success' | 'error' | 'info'>('info')
-  const [secretDialog, setSecretDialog] = useState<{ title: string; confirmLabel: string } | null>(null)
-  const [secretInput, setSecretInput] = useState('')
-  const [secretVisible, setSecretVisible] = useState(false)
-  const [appDialog, setAppDialog] = useState<AppDialogState | null>(null)
-  const [appDialogInput, setAppDialogInput] = useState('')
-  const [movePageDialogOpen, setMovePageDialogOpen] = useState(false)
-  const [moveBeforePageId, setMoveBeforePageId] = useState<string>('')
   const [actionsOpen, setActionsOpen] = useState(false)
   const [formatMenuOpen, setFormatMenuOpen] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
-  const [notebooksHidden, setNotebooksHidden] = useState(false)
-  const [notebookMenuId, setNotebookMenuId] = useState<string | null>(null)
-  const [pageMenuId, setPageMenuId] = useState<string | null>(null)
-  const [sidebarView, setSidebarView] = useState<'notebooks' | 'pages'>('notebooks')
-  const [sidebarPanelMode, setSidebarPanelMode] = useState<'library' | 'bookmarks'>('library')
-  const [bookmarkNotebooksCollapsed, setBookmarkNotebooksCollapsed] = useState<Set<string>>(new Set())
-  const [notebookSidebarMode, setNotebookSidebarMode] = useState<'active' | 'archived'>('active')
-  const notebookSidebarModeRef = useRef<'active' | 'archived'>('active')
-  const [imageModalAttachment, setImageModalAttachment] = useState<Attachment | null>(null)
-  const imageModalUrl = useMemo(() => {
-    if (!imageModalAttachment) {
-      return null
-    }
-    return URL.createObjectURL(imageModalAttachment.blob)
-  }, [imageModalAttachment])
-  const secretResolverRef = useRef<((value: string | null) => void) | null>(null)
-  const appDialogResolverRef = useRef<((value: unknown) => void) | null>(null)
+  const {
+    secretDialog,
+    secretInput,
+    secretVisible,
+    appDialog,
+    appDialogInput,
+    movePageDialogOpen,
+    moveBeforePageId,
+    setSecretInput,
+    setSecretVisible,
+    setAppDialogInput,
+    setMoveBeforePageId,
+    openMovePageDialog: openMovePageDialogState,
+    closeMovePageDialog,
+    requestSecret,
+    closeSecretDialog,
+    requestTextDialog,
+    requestConfirmDialog,
+    requestAlertDialog,
+    closeAppDialog,
+  } = useAppDialogs()
+  const {
+    notebooksHidden,
+    notebookMenuId,
+    pageMenuId,
+    sidebarView,
+    sidebarPanelMode,
+    notebookSidebarMode,
+    notebookSidebarModeRef,
+    notebooksCollapsed,
+    setNotebooksHidden,
+    setNotebookMenuId,
+    setPageMenuId,
+    setSidebarView,
+    setSidebarPanelMode,
+    setNotebookSidebarMode,
+    setNotebooksCollapsed,
+    toggleBookmarkNotebookExpanded,
+    isBookmarkNotebookExpanded,
+  } = useSidebarState()
+  const {
+    imageModalAttachment,
+    imageModalUrl,
+    openAttachmentModal,
+    closeAttachmentModal,
+  } = useImageModal()
 
-  const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
   const editorRef = useRef<HTMLDivElement | null>(null)
   const editorTitleRef = useRef<HTMLInputElement | null>(null)
   const forceSaveNoteRef = useRef<() => Promise<void>>(async () => {})
@@ -152,15 +173,11 @@ function App() {
 
   useEffect(() => {
     void bootstrap()
-  }, [])
+  }, [setNotebookMenuId, setPageMenuId])
 
   useEffect(() => {
     selectedNotebookIdRef.current = selectedNotebookId
   }, [selectedNotebookId])
-
-  useEffect(() => {
-    notebookSidebarModeRef.current = notebookSidebarMode
-  }, [notebookSidebarMode])
 
   function markDataSaved() {
     setLastSavedAt(Date.now())
@@ -176,70 +193,22 @@ function App() {
     return () => {
       window.removeEventListener('click', handleGlobalClick)
     }
+  }, [setNotebookMenuId, setPageMenuId])
+
+  const handleAutoLock = useCallback(() => {
+    lockVault()
+    setUnlocked(false)
+    setPinInput('')
+    setPinError('Sesion bloqueada por inactividad. Ingresa tu PIN.')
   }, [])
 
-  useEffect(() => {
-    if (!imageModalUrl) {
-      return
-    }
-    return () => {
-      URL.revokeObjectURL(imageModalUrl)
-    }
-  }, [imageModalUrl])
-
-  useEffect(() => {
-    if (!unlocked) {
-      if (inactivityTimerRef.current !== null) {
-        window.clearTimeout(inactivityTimerRef.current)
-        inactivityTimerRef.current = null
-      }
-      return
-    }
-
-    const scheduleAutoLock = () => {
-      if (inactivityTimerRef.current !== null) {
-        window.clearTimeout(inactivityTimerRef.current)
-      }
-      inactivityTimerRef.current = window.setTimeout(() => {
-        void (async () => {
-          try {
-            await forceSaveNoteRef.current()
-            await pagePersistChainRef.current
-          } catch (error) {
-            console.error('Auto-lock: guardado previo fallo:', error)
-          }
-          lockVault()
-          setUnlocked(false)
-          setPinInput('')
-          setPinError('Sesion bloqueada por inactividad. Ingresa tu PIN.')
-        })()
-      }, INACTIVITY_AUTO_LOCK_MS)
-    }
-
-    const handleActivity = () => {
-      scheduleAutoLock()
-    }
-
-    scheduleAutoLock()
-
-    window.addEventListener('pointerdown', handleActivity)
-    window.addEventListener('keydown', handleActivity)
-    window.addEventListener('mousemove', handleActivity)
-    window.addEventListener('touchstart', handleActivity, { passive: true })
-    window.addEventListener('scroll', handleActivity, { passive: true })
-
-    return () => {
-      window.removeEventListener('pointerdown', handleActivity)
-      window.removeEventListener('keydown', handleActivity)
-      window.removeEventListener('mousemove', handleActivity)
-      window.removeEventListener('touchstart', handleActivity)
-      window.removeEventListener('scroll', handleActivity)
-      if (inactivityTimerRef.current !== null) {
-        window.clearTimeout(inactivityTimerRef.current)
-        inactivityTimerRef.current = null
-      }
-    }
-  }, [unlocked])
+  useInactivityLock({
+    unlocked,
+    delayMs: INACTIVITY_AUTO_LOCK_MS,
+    forceSaveNoteRef,
+    pagePersistChainRef,
+    onAutoLock: handleAutoLock,
+  })
 
   const selectedNotebook = useMemo(
     () => notebooks.find((notebook) => notebook.id === selectedNotebookId) ?? null,
@@ -320,21 +289,6 @@ function App() {
       .sort((a, b) => a.notebook.title.localeCompare(b.notebook.title, 'es'))
   }, [allPages, notebooks])
 
-  function toggleBookmarkNotebookExpanded(notebookId: string) {
-    setBookmarkNotebooksCollapsed((current) => {
-      const next = new Set(current)
-      if (next.has(notebookId)) {
-        next.delete(notebookId)
-      } else {
-        next.add(notebookId)
-      }
-      return next
-    })
-  }
-
-  function isBookmarkNotebookExpanded(notebookId: string) {
-    return !bookmarkNotebooksCollapsed.has(notebookId)
-  }
 
   async function refreshAllPages() {
     setAllPages(await listAllPages())
@@ -362,7 +316,6 @@ function App() {
     if (allNotebooks.length === 0) {
       const notebook = await createNotebook('Mi libreta')
       markDataSaved()
-      notebookSidebarModeRef.current = 'active'
       setNotebookSidebarMode('active')
       const refreshed = await listNotebooks()
       setNotebooks(refreshed)
@@ -528,7 +481,6 @@ function App() {
 
   function handleNotebookSidebarModeChange(mode: 'active' | 'archived') {
     setNotebookSidebarMode(mode)
-    notebookSidebarModeRef.current = mode
     setNotebookMenuId(null)
     void refreshNotebooks()
   }
@@ -574,13 +526,7 @@ function App() {
     if (!selectedPage) {
       return
     }
-    setMoveBeforePageId('')
-    setMovePageDialogOpen(true)
-  }
-
-  function closeMovePageDialog() {
-    setMovePageDialogOpen(false)
-    setMoveBeforePageId('')
+    openMovePageDialogState()
   }
 
   async function handleMovePageConfirm() {
@@ -651,10 +597,6 @@ function App() {
         await forceSaveNote()
       }
       await pagePersistChainRef.current
-      if (inactivityTimerRef.current !== null) {
-        window.clearTimeout(inactivityTimerRef.current)
-        inactivityTimerRef.current = null
-      }
       lockVault()
       setUnlocked(false)
       setPinInput('')
@@ -1130,7 +1072,6 @@ function App() {
     const all = await listNotebooks()
     const nb = all.find((notebook) => notebook.id === result.notebookId)
     if (nb && isNotebookArchived(nb)) {
-      notebookSidebarModeRef.current = 'archived'
       setNotebookSidebarMode('archived')
     }
     setSelectedNotebookId(result.notebookId)
@@ -1147,10 +1088,8 @@ function App() {
     }
     const nb = notebooks.find((notebook) => notebook.id === target.notebookId)
     if (nb && isNotebookArchived(nb)) {
-      notebookSidebarModeRef.current = 'archived'
       setNotebookSidebarMode('archived')
     } else {
-      notebookSidebarModeRef.current = 'active'
       setNotebookSidebarMode('active')
     }
     setSelectedNotebookId(target.notebookId)
@@ -1178,14 +1117,6 @@ function App() {
       setBackupStatus(`No se pudo copiar automaticamente. Referencia: ${token}`)
       setBackupStatusType('error')
     }
-  }
-
-  function openAttachmentModal(attachment: Attachment) {
-    setImageModalAttachment(attachment)
-  }
-
-  function closeAttachmentModal() {
-    setImageModalAttachment(null)
   }
 
   async function handleExportEncryptedBackup() {
@@ -1272,54 +1203,6 @@ function App() {
     input.click()
   }
 
-  function requestSecret(title: string, confirmLabel: string): Promise<string | null> {
-    setSecretInput('')
-    setSecretVisible(false)
-    setSecretDialog({ title, confirmLabel })
-    return new Promise((resolve) => {
-      secretResolverRef.current = resolve
-    })
-  }
-
-  function closeSecretDialog(value: string | null) {
-    setSecretDialog(null)
-    setSecretVisible(false)
-    const resolver = secretResolverRef.current
-    secretResolverRef.current = null
-    resolver?.(value)
-  }
-
-  function requestTextDialog(config: TextDialogConfig): Promise<string | null> {
-    setAppDialogInput(config.initialValue ?? '')
-    setAppDialog({ ...config, kind: 'text' })
-    return new Promise((resolve) => {
-      appDialogResolverRef.current = resolve as (value: unknown) => void
-    })
-  }
-
-  function requestConfirmDialog(config: ConfirmDialogConfig): Promise<boolean> {
-    setAppDialogInput('')
-    setAppDialog({ ...config, kind: 'confirm' })
-    return new Promise((resolve) => {
-      appDialogResolverRef.current = resolve as (value: unknown) => void
-    })
-  }
-
-  async function requestAlertDialog(config: AlertDialogConfig): Promise<void> {
-    setAppDialogInput('')
-    setAppDialog({ ...config, kind: 'alert' })
-    await new Promise<void>((resolve) => {
-      appDialogResolverRef.current = () => resolve()
-    })
-  }
-
-  function closeAppDialog(value: string | boolean | null) {
-    setAppDialog(null)
-    setAppDialogInput('')
-    const resolver = appDialogResolverRef.current
-    appDialogResolverRef.current = null
-    resolver?.(value)
-  }
 
   if (!user) {
     return <main className="app-shell">Inicializando...</main>
