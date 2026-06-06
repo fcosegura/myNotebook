@@ -1740,6 +1740,7 @@ function App() {
                   </button>
                   <h2>Libretas</h2>
                 </div>
+                <button type="button" className="new-notebook-action" aria-label="Nueva libreta" title="Nueva libreta" onClick={handleNotebookCreate}>+</button>
               </div>
               <div className="notebook-sidebar-tabs" role="tablist" aria-label="Vista de libretas">
                 <button
@@ -1808,9 +1809,6 @@ function App() {
                   ) : null}
                 </article>
               ))}
-              <button type="button" className="new-item-button" onClick={handleNotebookCreate}>
-                + Nueva libreta
-              </button>
             </>
               )}
             </>
