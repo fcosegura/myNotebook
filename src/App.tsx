@@ -1703,7 +1703,7 @@ function App() {
                     <span className="item-icon notebook-folder-icon" aria-hidden="true">📁</span>
                     <span className="notebook-tree-name">{selectedNotebook?.title ?? 'Libreta'}</span>
                   </span>
-                  <button type="button" className="tree-hover-action" aria-label="Nueva pagina" title="Nueva pagina" onClick={handlePageCreate}>+</button>
+                  <button type="button" className="tree-hover-action new-page-action" aria-label="Nueva pagina" title="Nueva pagina" onClick={handlePageCreate}>+</button>
                 </div>
                 <ul className="pages-tree" aria-label="Paginas de la libreta">
                   {pages.map((page) => (
