@@ -114,6 +114,7 @@ function App() {
   const [movePageDialogOpen, setMovePageDialogOpen] = useState(false)
   const [moveBeforePageId, setMoveBeforePageId] = useState<string>('')
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [formatMenuOpen, setFormatMenuOpen] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [notebooksHidden, setNotebooksHidden] = useState(false)
   const [pagesHidden, setPagesHidden] = useState(false)
@@ -165,6 +166,7 @@ function App() {
     function handleGlobalClick() {
       setNotebookMenuId(null)
       setPageMenuId(null)
+      setFormatMenuOpen(false)
     }
     window.addEventListener('click', handleGlobalClick)
     return () => {
@@ -1875,21 +1877,39 @@ function App() {
                     <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorHistory('undo')} title="Deshacer (Ctrl/Cmd+Z)" aria-label="Deshacer"><UndoIcon /></button>
                     <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorHistory('redo')} title="Rehacer (Ctrl/Cmd+Shift+Z)" aria-label="Rehacer"><RedoIcon /></button>
                   </div>
-                  <div className="editor-font-size-group" role="group" aria-label="Tamano del texto">
-                    <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => applySelectionFontSizeStep(-3)} title="Reducir tamano" aria-label="Reducir tamano del texto">A−</button>
-                    <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => applySelectionFontSizeStep(3)} title="Aumentar tamano" aria-label="Aumentar tamano del texto">A+</button>
-                  </div>
                   <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('bold')} title="Negrita (Ctrl/Cmd+B)" aria-label="Negrita"><strong>B</strong></button>
                   <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('italic')} title="Cursiva (Ctrl/Cmd+I)" aria-label="Cursiva"><em>I</em></button>
                   <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('insertUnorderedList')} title="Lista con viñetas" aria-label="Lista con viñetas"><ListBulletIcon /></button>
                   <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('insertOrderedList')} title="Lista numerada" aria-label="Lista numerada"><ListNumberIcon /></button>
-                  <button type="button" className="toolbar-icon-btn" onClick={applyEditorBlockquote} title="Cita" aria-label="Alternar cita"><QuoteIcon /></button>
-                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('underline')} title="Subrayado" aria-label="Subrayado"><span className="toolbar-underline">U</span></button>
-                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('strikeThrough')} title="Tachado" aria-label="Tachado"><span className="toolbar-strike">S</span></button>
-                  <div className="editor-color-palette" role="group" aria-label="Color del texto">
-                    {TEXT_COLOR_PALETTE.map((color) => (
-                      <button key={color} type="button" className="color-swatch" style={{ backgroundColor: color }} onClick={() => applyEditorCommand('foreColor', color)} title={`Color ${color}`} aria-label={`Aplicar color ${color}`} />
-                    ))}
+                  <div className="editor-format-menu-wrap" onClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      className={`toolbar-format-trigger${formatMenuOpen ? ' is-open' : ''}`}
+                      onClick={() => setFormatMenuOpen((value) => !value)}
+                      aria-expanded={formatMenuOpen}
+                      aria-haspopup="menu"
+                      aria-label="Opciones de formato"
+                    >
+                      Formato
+                    </button>
+                    {formatMenuOpen ? (
+                      <div className="editor-format-popover" role="menu" aria-label="Opciones de formato">
+                        <div className="format-popover-row" role="group" aria-label="Tamano del texto">
+                          <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => applySelectionFontSizeStep(-3)} title="Reducir tamano" aria-label="Reducir tamano del texto">A−</button>
+                          <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => applySelectionFontSizeStep(3)} title="Aumentar tamano" aria-label="Aumentar tamano del texto">A+</button>
+                        </div>
+                        <div className="format-popover-row" role="group" aria-label="Estilos secundarios">
+                          <button type="button" className="toolbar-icon-btn" onClick={applyEditorBlockquote} title="Cita" aria-label="Alternar cita"><QuoteIcon /></button>
+                          <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('underline')} title="Subrayado" aria-label="Subrayado"><span className="toolbar-underline">U</span></button>
+                          <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('strikeThrough')} title="Tachado" aria-label="Tachado"><span className="toolbar-strike">S</span></button>
+                        </div>
+                        <div className="editor-color-palette" role="group" aria-label="Color del texto">
+                          {TEXT_COLOR_PALETTE.map((color) => (
+                            <button key={color} type="button" className="color-swatch" style={{ backgroundColor: color }} onClick={() => applyEditorCommand('foreColor', color)} title={`Color ${color}`} aria-label={`Aplicar color ${color}`} />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <div
