@@ -211,7 +211,8 @@ export function EditorPanel({
                     aria-haspopup="menu"
                     aria-label="Opciones de formato"
                   >
-                    Más <span aria-hidden="true">⌄</span>
+                    <span>Más</span>
+                    <span className="toolbar-chevron" aria-hidden="true">⌄</span>
                   </button>
                   {formatMenuOpen ? (
                     <div className="editor-format-popover" role="menu" aria-label="Opciones de formato">
