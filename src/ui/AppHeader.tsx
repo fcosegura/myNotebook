@@ -3,9 +3,11 @@ import type { SearchResult } from '../features/search/search'
 
 type AppHeaderProps = {
   actionsOpen: boolean
+  commandOpen: boolean
   searchTerm: string
   lastSavedAt: number | null
   notebooksHidden: boolean
+  canCreatePage: boolean
   logoutPending: boolean
   forceSavePending: boolean
   pastingImage: boolean
@@ -13,7 +15,11 @@ type AppHeaderProps = {
   backupStatus: string
   backupStatusType: 'success' | 'error' | 'info'
   onSearch: (term: string) => void
+  onToggleCommand: () => void
   onToggleActions: () => void
+  onCreatePage: () => void
+  onCreateNotebook: () => void
+  onShowBookmarks: () => void
   onExportEncryptedBackup: () => void
   onImportEncryptedBackup: () => void
   onPinChange: () => void
@@ -25,9 +31,11 @@ type AppHeaderProps = {
 
 export function AppHeader({
   actionsOpen,
+  commandOpen,
   searchTerm,
   lastSavedAt,
   notebooksHidden,
+  canCreatePage,
   logoutPending,
   forceSavePending,
   pastingImage,
@@ -35,7 +43,11 @@ export function AppHeader({
   backupStatus,
   backupStatusType,
   onSearch,
+  onToggleCommand,
   onToggleActions,
+  onCreatePage,
+  onCreateNotebook,
+  onShowBookmarks,
   onExportEncryptedBackup,
   onImportEncryptedBackup,
   onPinChange,
@@ -50,15 +62,36 @@ export function AppHeader({
         <header className="app-header">
           <div className="app-header-start">
             <h1>Libreta local</h1>
-            <label className="search-input-wrap" aria-label="Busqueda global">
+            <label className="search-input-wrap" aria-label="Búsqueda global">
               <span className="search-icon" aria-hidden="true">🔎</span>
               <input
                 className="search-input"
-                placeholder="Busqueda global inteligente..."
+                placeholder="Búsqueda global inteligente..."
                 value={searchTerm}
                 onChange={(event) => onSearch(event.target.value)}
               />
             </label>
+          </div>
+          <div className="app-header-quick-actions">
+            <button
+              type="button"
+              className="header-primary-action"
+              disabled={!canCreatePage}
+              onClick={onCreatePage}
+              title={canCreatePage ? 'Nueva página rápida' : 'Selecciona una libreta para crear una página'}
+            >
+              + Página
+            </button>
+            <button
+              type="button"
+              className={`header-command-action${commandOpen ? ' is-open' : ''}`}
+              onClick={onToggleCommand}
+              aria-expanded={commandOpen}
+              aria-haspopup="true"
+              title="Acciones rápidas"
+            >
+              Acciones rápidas
+            </button>
           </div>
           <button
             type="button"
@@ -66,7 +99,7 @@ export function AppHeader({
             onClick={onToggleActions}
             aria-expanded={actionsOpen}
             aria-haspopup="true"
-            aria-label="Acciones y configuracion"
+            aria-label="Acciones y configuración"
             title="Acciones"
           >
             <HeaderMenuIcon />
@@ -77,15 +110,16 @@ export function AppHeader({
             <p className="actions-menu-meta" role="status">
               {lastSavedAt !== null ? (
                 <>
-                  Ultimo guardado local:{' '}
+                  Último guardado local:{' '}
                   <time dateTime={new Date(lastSavedAt).toISOString()}>
                     {formatLastSavedDisplay(lastSavedAt)}
                   </time>
                 </>
               ) : (
-                'Aun no hay guardados en esta sesion.'
+                'Aún no hay guardados en esta sesión.'
               )}
             </p>
+            <strong className="actions-menu-section">Configuración y datos</strong>
             <button type="button" onClick={onExportEncryptedBackup}>Exportar cifrado</button>
             <button type="button" onClick={onImportEncryptedBackup}>Importar cifrado</button>
             <button type="button" onClick={onPinChange}>Cambiar PIN</button>
@@ -97,9 +131,29 @@ export function AppHeader({
               className="actions-logout-button"
               disabled={logoutPending || forceSavePending || pastingImage}
               onClick={onLogout}
-              title="Guarda la nota actual, bloquea la sesion y vuelve al PIN (los datos quedan en este dispositivo)"
+              title="Guarda la nota actual, bloquea la sesión y vuelve al PIN (los datos quedan en este dispositivo)"
             >
-              {logoutPending ? 'Cerrando sesion...' : 'Cerrar sesion'}
+              {logoutPending ? 'Cerrando sesión...' : 'Cerrar sesión'}
+            </button>
+          </section>
+        ) : null}
+        {commandOpen ? (
+          <section className="command-menu" aria-label="Acciones rápidas">
+            <button type="button" disabled={!canCreatePage} onClick={onCreatePage}>
+              <strong>Crear página</strong>
+              <span>Abre una nota nueva y lista para escribir.</span>
+            </button>
+            <button type="button" onClick={onCreateNotebook}>
+              <strong>Crear libreta</strong>
+              <span>Organiza un nuevo espacio de notas.</span>
+            </button>
+            <button type="button" onClick={onShowBookmarks}>
+              <strong>Ver favoritos</strong>
+              <span>Salta a tus páginas marcadas.</span>
+            </button>
+            <button type="button" onClick={onExportEncryptedBackup}>
+              <strong>Exportar backup</strong>
+              <span>Guarda una copia cifrada.</span>
             </button>
           </section>
         ) : null}

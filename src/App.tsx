@@ -113,6 +113,7 @@ function App() {
   const [backupStatus, setBackupStatus] = useState('')
   const [backupStatusType, setBackupStatusType] = useState<'success' | 'error' | 'info'>('info')
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [commandOpen, setCommandOpen] = useState(false)
   const [formatMenuOpen, setFormatMenuOpen] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const {
@@ -227,6 +228,25 @@ function App() {
     () => pages.find((page) => page.id === selectedPageId) ?? null,
     [pages, selectedPageId],
   )
+
+  const selectedPageIndex = useMemo(
+    () => pages.findIndex((page) => page.id === selectedPageId),
+    [pages, selectedPageId],
+  )
+
+  const saveStatusLabel = useMemo(() => {
+    if (forceSavePending) {
+      return 'Guardando…'
+    }
+    if (pastingImage) {
+      return 'Procesando imagen…'
+    }
+    if (lastSavedAt !== null) {
+      const secondsAgo = Math.max(0, Math.round((Date.now() - lastSavedAt) / 1000))
+      return secondsAgo < 10 ? 'Guardado ahora' : 'Sin cambios'
+    }
+    return 'Sin cambios'
+  }, [forceSavePending, lastSavedAt, pastingImage])
 
   useEffect(() => {
     if (!unlocked) {
@@ -386,21 +406,16 @@ function App() {
     if (!selectedNotebookId) {
       return
     }
-
-    const pageName = await requestTextDialog({
-      title: 'Nueva pagina',
-      message: 'Escribe el nombre de la pagina.',
-      confirmLabel: 'Crear',
-      placeholder: 'Nombre de la pagina',
-    })
-    if (pageName === null) {
-      return
-    }
-
-    const page = await createPage(selectedNotebookId, pageName)
+    const page = await createPage(selectedNotebookId, 'Nueva página')
+    setSidebarPanelMode('library')
+    setSidebarView('pages')
     await refreshPages(selectedNotebookId)
     setSelectedPageId(page.id)
     markDataSaved()
+    window.setTimeout(() => {
+      editorTitleRef.current?.focus()
+      editorTitleRef.current?.select()
+    }, 0)
   }
 
   function enqueuePagePersist(task: () => Promise<void>): Promise<void> {
@@ -571,7 +586,7 @@ function App() {
       lastSyncedEditorHtmlRef.current = html
 
       const rawTitle = editorTitleRef.current?.value ?? selectedPage.title
-      const nextTitle = rawTitle.trim() ? rawTitle.trim() : (selectedPage.title.trim() || 'Nueva pagina')
+      const nextTitle = rawTitle.trim() ? rawTitle.trim() : (selectedPage.title.trim() || 'Nueva página')
 
       await handlePageFieldChange('title', nextTitle)
       await handlePageFieldChange('content', html)
@@ -600,11 +615,11 @@ function App() {
       lockVault()
       setUnlocked(false)
       setPinInput('')
-      setPinError('Sesion cerrada. Ingresa tu PIN para volver a ver tus notas.')
+      setPinError('Sesión cerrada. Ingresa tu PIN para volver a ver tus notas.')
       setActionsOpen(false)
       setSearchTerm('')
       setSearchResults([])
-      setBackupStatus('Sesion cerrada; tus notas siguen guardadas en este navegador.')
+      setBackupStatus('Sesión cerrada; tus notas siguen guardadas en este navegador.')
       setBackupStatusType('info')
     } finally {
       setLogoutPending(false)
@@ -640,7 +655,7 @@ function App() {
       return
     }
     if (pinInput.trim().length < 4) {
-      setPinError('El PIN necesita minimo 4 digitos.')
+      setPinError('El PIN necesita mínimo 4 dígitos.')
       return
     }
     const salt = createSalt()
@@ -690,7 +705,7 @@ function App() {
       try {
         await encryptExistingDataAtRest()
       } catch (error) {
-        setBackupStatus(`No se pudo completar la migracion de cifrado: ${(error as Error).message}`)
+        setBackupStatus(`No se pudo completar la migración de cifrado: ${(error as Error).message}`)
         setBackupStatusType('error')
       }
       await refreshNotebooks()
@@ -702,7 +717,7 @@ function App() {
       setUnlockAttempts(0)
       setUnlockBlockedUntil(0)
     } catch (error) {
-      setPinError((error as Error).message || 'No se pudo desbloquear la sesion.')
+      setPinError((error as Error).message || 'No se pudo desbloquear la sesión.')
     }
   }
 
@@ -761,7 +776,7 @@ function App() {
     if (!user?.sessionConfig) {
       await requestAlertDialog({
         title: 'PIN no configurado',
-        message: 'Primero configura un PIN para habilitar esta opcion.',
+        message: 'Primero configura un PIN para habilitar esta opción.',
       })
       return
     }
@@ -789,8 +804,8 @@ function App() {
     }
     if (newPin.trim().length < 4) {
       await requestAlertDialog({
-        title: 'PIN invalido',
-        message: 'El PIN nuevo necesita minimo 4 digitos.',
+        title: 'PIN inválido',
+        message: 'El PIN nuevo necesita mínimo 4 dígitos.',
       })
       return
     }
@@ -1093,9 +1108,55 @@ function App() {
       setNotebookSidebarMode('active')
     }
     setSelectedNotebookId(target.notebookId)
+    setSidebarPanelMode('library')
     setSidebarView('pages')
     await refreshPages(target.notebookId)
     setSelectedPageId(target.id)
+  }
+
+  function showBookmarks() {
+    setSidebarPanelMode('bookmarks')
+    setNotebooksHidden(false)
+    setNotebooksCollapsed(false)
+    setActionsOpen(false)
+    setCommandOpen(false)
+  }
+
+  function formatPageUpdatedAt(ts: number) {
+    const date = new Date(ts)
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000
+    if (ts >= startOfToday) {
+      return new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(date)
+    }
+    if (ts >= startOfYesterday) {
+      return 'Ayer'
+    }
+    return new Intl.DateTimeFormat('es', { day: '2-digit', month: 'short' }).format(date)
+  }
+
+  function getPagePreview(page: Page) {
+    const withoutTags = page.content
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    return withoutTags.length > 58 ? `${withoutTags.slice(0, 58)}…` : withoutTags
+  }
+
+  function selectPreviousPage() {
+    if (selectedPageIndex <= 0) {
+      return
+    }
+    setSelectedPageId(pages[selectedPageIndex - 1].id)
+  }
+
+  function selectNextPage() {
+    if (selectedPageIndex < 0 || selectedPageIndex >= pages.length - 1) {
+      return
+    }
+    setSelectedPageId(pages[selectedPageIndex + 1].id)
   }
 
 
@@ -1252,9 +1313,11 @@ function App() {
       <main className="app-shell">
         <AppHeader
           actionsOpen={actionsOpen}
+          commandOpen={commandOpen}
           searchTerm={searchTerm}
           lastSavedAt={lastSavedAt}
           notebooksHidden={notebooksHidden}
+          canCreatePage={selectedNotebookId !== null}
           logoutPending={logoutPending}
           forceSavePending={forceSavePending}
           pastingImage={pastingImage}
@@ -1262,7 +1325,17 @@ function App() {
           backupStatus={backupStatus}
           backupStatusType={backupStatusType}
           onSearch={handleSearch}
-          onToggleActions={() => setActionsOpen((value) => !value)}
+          onToggleCommand={() => {
+            setCommandOpen((value) => !value)
+            setActionsOpen(false)
+          }}
+          onToggleActions={() => {
+            setActionsOpen((value) => !value)
+            setCommandOpen(false)
+          }}
+          onCreatePage={() => void handlePageCreate()}
+          onCreateNotebook={() => void handleNotebookCreate()}
+          onShowBookmarks={showBookmarks}
           onExportEncryptedBackup={() => void handleExportEncryptedBackup()}
           onImportEncryptedBackup={() => void handleImportEncryptedBackup()}
           onPinChange={() => void handlePinChange()}
@@ -1314,10 +1387,13 @@ function App() {
             onOpenBookmarkPage={(pageId) => void openBookmarkPage(pageId)}
             isNotebookArchived={isNotebookArchived}
             isPageBookmarked={isPageBookmarked}
+            formatPageUpdatedAt={formatPageUpdatedAt}
+            getPagePreview={getPagePreview}
           />
 
           <EditorPanel
             selectedNotebookId={selectedNotebookId}
+            selectedNotebookTitle={selectedNotebook?.title ?? null}
             selectedPage={selectedPage}
             selectedPageAttachments={selectedPageAttachments}
             editorRef={editorRef}
@@ -1328,6 +1404,16 @@ function App() {
             pastingImage={pastingImage}
             formatMenuOpen={formatMenuOpen}
             textColorPalette={TEXT_COLOR_PALETTE}
+            saveStatusLabel={saveStatusLabel}
+            canMoveToPreviousPage={selectedPageIndex > 0}
+            canMoveToNextPage={selectedPageIndex >= 0 && selectedPageIndex < pages.length - 1}
+            onCreateNotebook={() => void handleNotebookCreate()}
+            onCreatePage={() => void handlePageCreate()}
+            onShowBookmarks={showBookmarks}
+            onMovePage={openMovePageDialog}
+            onSelectPreviousPage={selectPreviousPage}
+            onSelectNextPage={selectNextPage}
+            onPageDelete={() => void handlePageDelete()}
             onPageTitleChange={(value) => void handlePageFieldChange('title', value)}
             onPageBookmark={() => void handlePageBookmark()}
             onForceSaveNote={() => void forceSaveNote()}

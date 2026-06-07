@@ -7,6 +7,7 @@ type EditorCommand = 'bold' | 'italic' | 'insertUnorderedList' | 'insertOrderedL
 
 type EditorPanelProps = {
   selectedNotebookId: string | null
+  selectedNotebookTitle: string | null
   selectedPage: Page | null
   selectedPageAttachments: Attachment[]
   editorRef: RefObject<HTMLDivElement | null>
@@ -17,6 +18,16 @@ type EditorPanelProps = {
   pastingImage: boolean
   formatMenuOpen: boolean
   textColorPalette: string[]
+  saveStatusLabel: string
+  canMoveToPreviousPage: boolean
+  canMoveToNextPage: boolean
+  onCreateNotebook: () => void
+  onCreatePage: () => void
+  onShowBookmarks: () => void
+  onMovePage: () => void
+  onSelectPreviousPage: () => void
+  onSelectNextPage: () => void
+  onPageDelete: () => void
   onPageTitleChange: (value: string) => void
   onPageBookmark: () => void
   onForceSaveNote: () => void
@@ -36,6 +47,7 @@ type EditorPanelProps = {
 
 export function EditorPanel({
   selectedNotebookId,
+  selectedNotebookTitle,
   selectedPage,
   selectedPageAttachments,
   editorRef,
@@ -46,6 +58,16 @@ export function EditorPanel({
   pastingImage,
   formatMenuOpen,
   textColorPalette,
+  saveStatusLabel,
+  canMoveToPreviousPage,
+  canMoveToNextPage,
+  onCreateNotebook,
+  onCreatePage,
+  onShowBookmarks,
+  onMovePage,
+  onSelectPreviousPage,
+  onSelectNextPage,
+  onPageDelete,
   onPageTitleChange,
   onPageBookmark,
   onForceSaveNote,
@@ -68,17 +90,39 @@ export function EditorPanel({
         {!selectedNotebookId ? (
           <div className="workspace-empty-state" role="status">
             <NotebookEmptyIcon />
+            <h2>Tu espacio está listo para moverse.</h2>
             <p className="workspace-empty-text">
-              Selecciona una libreta en la barra lateral, o cambia entre Activas y Archivadas.
+              Selecciona una libreta, crea una nueva o salta a tus favoritas.
             </p>
+            <div className="workspace-empty-actions">
+              <button type="button" className="primary" onClick={onCreateNotebook}>Crear libreta</button>
+              <button type="button" onClick={onShowBookmarks}>Ver favoritas</button>
+            </div>
           </div>
         ) : !selectedPage ? (
           <div className="workspace-empty-state" role="status">
             <PageEmptyIcon />
-            <p className="workspace-empty-text">Selecciona una pagina para editar.</p>
+            <h2>{selectedNotebookTitle ?? 'Libreta'} está esperando una idea.</h2>
+            <p className="workspace-empty-text">Crea una página rápida y empieza a escribir sin pasar por formularios.</p>
+            <div className="workspace-empty-actions">
+              <button type="button" className="primary" onClick={onCreatePage}>Crear primera página</button>
+              <button type="button" onClick={onShowBookmarks}>Ver favoritas</button>
+            </div>
           </div>
         ) : (
           <>
+            <div className="editor-context-row">
+              <span className="editor-context-notebook">📒 {selectedNotebookTitle ?? 'Libreta'}</span>
+              <div className="editor-context-actions" aria-label="Acciones de página">
+                <button type="button" onClick={onSelectPreviousPage} disabled={!canMoveToPreviousPage} title="Página anterior">‹</button>
+                <button type="button" onClick={onSelectNextPage} disabled={!canMoveToNextPage} title="Página siguiente">›</button>
+                <button type="button" onClick={onMovePage}>Mover</button>
+                <button type="button" onClick={onPageBookmark}>
+                  {isCurrentPageBookmarked ? 'Favorita' : 'Marcar favorita'}
+                </button>
+                <button type="button" className="danger-soft-action" onClick={onPageDelete}>Eliminar</button>
+              </div>
+            </div>
             <div className="editor-header">
               <input
                 ref={editorTitleRef}
@@ -94,8 +138,8 @@ export function EditorPanel({
                   className={`editor-icon-button bookmark-icon${isCurrentPageBookmarked ? ' active' : ''}`}
                   aria-pressed={isCurrentPageBookmarked}
                   onClick={onPageBookmark}
-                  title={isCurrentPageBookmarked ? 'Quitar bookmark' : 'Marcar pagina'}
-                  aria-label={isCurrentPageBookmarked ? 'Quitar bookmark' : 'Marcar pagina'}
+                  title={isCurrentPageBookmarked ? 'Quitar favorito' : 'Marcar página'}
+                  aria-label={isCurrentPageBookmarked ? 'Quitar favorito' : 'Marcar página'}
                 >
                   <BookmarkIcon filled={isCurrentPageBookmarked} />
                 </button>
@@ -115,6 +159,9 @@ export function EditorPanel({
                 >
                   <CloudSaveIcon saving={forceSavePending} saved={lastSavedAt !== null} />
                 </button>
+                <span className={`save-status-pill${forceSavePending ? ' is-saving' : lastSavedAt !== null ? ' is-saved' : ''}`}>
+                  {saveStatusLabel}
+                </span>
               </div>
             </div>
             <section className="editor-richtext-shell" aria-label="Editor de contenido enriquecido">
@@ -140,9 +187,9 @@ export function EditorPanel({
                   </button>
                   {formatMenuOpen ? (
                     <div className="editor-format-popover" role="menu" aria-label="Opciones de formato">
-                      <div className="format-popover-row" role="group" aria-label="Tamano del texto">
-                        <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => onApplySelectionFontSizeStep(-3)} title="Reducir tamano" aria-label="Reducir tamano del texto">A−</button>
-                        <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => onApplySelectionFontSizeStep(3)} title="Aumentar tamano" aria-label="Aumentar tamano del texto">A+</button>
+                      <div className="format-popover-row" role="group" aria-label="Tamaño del texto">
+                        <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => onApplySelectionFontSizeStep(-3)} title="Reducir tamaño" aria-label="Reducir tamaño del texto">A−</button>
+                        <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => onApplySelectionFontSizeStep(3)} title="Aumentar tamaño" aria-label="Aumentar tamaño del texto">A+</button>
                       </div>
                       <div className="format-popover-row" role="group" aria-label="Estilos secundarios">
                         <button type="button" className="toolbar-icon-btn" onClick={onApplyEditorBlockquote} title="Cita" aria-label="Alternar cita"><QuoteIcon /></button>
@@ -169,7 +216,7 @@ export function EditorPanel({
                 onPaste={(event) => { onProcessImagePaste(event) }}
               />
               <footer className="editor-footer-tip" role="status">
-                {pastingImage ? 'Procesando screenshot...' : 'Tip: pega screenshot con Ctrl/Cmd + V'}
+                {pastingImage ? 'Procesando screenshot...' : 'Tip: pega screenshot con Ctrl/Cmd + V o crea otra página con + Página'}
               </footer>
             </section>
             <AttachmentsPanel

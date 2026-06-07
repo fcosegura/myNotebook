@@ -15,10 +15,10 @@ export function AttachmentsPanel({
 }: AttachmentsPanelProps) {
   return (
     <section className="attachments">
-      <h3>Imagenes de la pagina</h3>
+      <h3>Imágenes de la página</h3>
       <div className="attachments-content">
         {attachments.length === 0 ? (
-          <p className="attachments-empty">No hay imagenes todavia.</p>
+          <p className="attachments-empty">Pega una captura con Ctrl/Cmd + V y aparecerá aquí como recurso visual.</p>
         ) : (
           <div className="attachment-grid">
             {attachments.map((attachment) => (

@@ -27,6 +27,7 @@
   border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .master-sidebar {
@@ -117,6 +118,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.sidebar-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .column-title-left,
@@ -250,6 +257,35 @@
   gap: 7px;
 }
 
+.page-tree-label {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.page-tree-title-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.page-tree-meta {
+  min-width: 0;
+  display: flex;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.page-tree-meta span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .page-tree-link.active,
 .list-item.active,
 .sidebar-notebook-item.active .list-item {
@@ -281,6 +317,7 @@
   opacity: 1;
   min-width: 30px;
   min-height: 30px;
+  padding: 0 10px;
   border-color: #b7c9ee;
   background: var(--accent-soft);
   color: var(--accent-strong);
@@ -326,6 +363,29 @@
   line-height: 1.45;
 }
 
+.sidebar-empty-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.sidebar-empty-card p {
+  margin: 0;
+}
+
+.sidebar-empty-card button {
+  justify-self: start;
+  min-height: 30px;
+  padding: 0 10px;
+  border-color: #b7c9ee;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 650;
+}
+
 .context-menu {
   position: absolute;
   z-index: 25;
@@ -365,7 +425,47 @@
   text-align: center;
 }
 
+.workspace-empty-state h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.2rem;
+}
+
+.workspace-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.workspace-empty-actions button {
+  min-height: 36px;
+  padding: 0 13px;
+}
+
+.workspace-empty-actions .primary {
+  border-color: #9db6e6;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.workspace-empty-actions .primary:hover {
+  background: var(--accent-strong);
+  color: #fff;
+}
+
 .workspace-empty-icon {
   color: #a7b1c2;
 }
 
+.sidebar-notebook-group {
+  display: grid;
+  gap: 1px;
+}
+
+@media (max-width: 860px) {
+  .master-detail-layout {
+    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  }
+}

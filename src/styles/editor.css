@@ -1,3 +1,43 @@
+.editor-context-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 min(3vw, 28px) 10px;
+}
+
+.editor-context-notebook {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-context-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.editor-context-actions button {
+  min-height: 30px;
+  padding: 0 9px;
+  border-color: #d5dfef;
+  background: var(--surface-soft);
+  font-size: 0.8rem;
+}
+
+.editor-context-actions .danger-soft-action {
+  border-color: #f1b8b2;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .editor-header {
   display: flex;
   align-items: center;
@@ -36,6 +76,32 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.save-status-pill {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.save-status-pill.is-saving {
+  border-color: #b7c9ee;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.save-status-pill.is-saved {
+  border-color: #b9e5cc;
+  background: var(--success-soft);
+  color: var(--success);
 }
 
 .editor-richtext-shell {
@@ -211,6 +277,11 @@
   overflow: hidden;
 }
 
+.attachments:has(.attachments-empty) {
+  border-style: dashed;
+  background: linear-gradient(180deg, #fff, var(--surface-soft));
+}
+
 .attachments h3 {
   margin: 0;
   padding: 8px 12px;
@@ -291,4 +362,3 @@
   padding: 0 6px;
   font-size: 0.78rem;
 }
-
