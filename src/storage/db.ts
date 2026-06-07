@@ -46,36 +46,65 @@ export type Attachment = {
   createdAt: number
 }
 
-const DATABASE_NAME = 'local-notebook-db'
+function createDbInstance(name: string) {
+  const newDb = new Dexie(name) as Dexie & {
+    users: EntityTable<UserLocal, 'id'>
+    notebooks: EntityTable<Notebook, 'id'>
+    pages: EntityTable<Page, 'id'>
+    attachments: EntityTable<Attachment, 'id'>
+  }
 
-export const db = new Dexie(DATABASE_NAME) as Dexie & {
+  newDb.version(1).stores({
+    users: 'id, createdAt',
+    notebooks: 'id, updatedAt, title, pinned',
+    pages: 'id, notebookId, updatedAt, title, *tags',
+    attachments: 'id, pageId, createdAt',
+  })
+
+  newDb.version(2)
+    .stores({
+      users: 'id, createdAt',
+      notebooks: 'id, updatedAt, title, pinned, archived',
+      pages: 'id, notebookId, updatedAt, title, *tags',
+      attachments: 'id, pageId, createdAt',
+    })
+    .upgrade(async (tx) => {
+      await tx
+        .table('notebooks')
+        .toCollection()
+        .modify((row: Notebook & { archived?: boolean }) => {
+          if (row.archived === undefined) {
+            row.archived = false
+          }
+        })
+    })
+
+  return newDb
+}
+
+let activeDb = createDbInstance('local-notebook-db')
+
+export async function switchDatabase(userIdHash: string): Promise<void> {
+  const targetName = `local-notebook-db-${userIdHash}`
+  if (activeDb.name === targetName) {
+    return
+  }
+  await activeDb.close()
+  activeDb = createDbInstance(targetName)
+  await activeDb.open()
+}
+
+export const db = new Proxy({}, {
+  get(_target, prop) {
+    const value = Reflect.get(activeDb, prop)
+    if (typeof value === 'function') {
+      return value.bind(activeDb)
+    }
+    return value
+  }
+}) as Dexie & {
   users: EntityTable<UserLocal, 'id'>
   notebooks: EntityTable<Notebook, 'id'>
   pages: EntityTable<Page, 'id'>
   attachments: EntityTable<Attachment, 'id'>
 }
-
-db.version(1).stores({
-  users: 'id, createdAt',
-  notebooks: 'id, updatedAt, title, pinned',
-  pages: 'id, notebookId, updatedAt, title, *tags',
-  attachments: 'id, pageId, createdAt',
-})
-
-db.version(2)
-  .stores({
-    users: 'id, createdAt',
-    notebooks: 'id, updatedAt, title, pinned, archived',
-    pages: 'id, notebookId, updatedAt, title, *tags',
-    attachments: 'id, pageId, createdAt',
-  })
-  .upgrade(async (tx) => {
-    await tx
-      .table('notebooks')
-      .toCollection()
-      .modify((row: Notebook & { archived?: boolean }) => {
-        if (row.archived === undefined) {
-          row.archived = false
-        }
-      })
-  })

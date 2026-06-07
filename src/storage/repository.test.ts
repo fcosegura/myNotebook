@@ -111,7 +111,9 @@ describe('persistencia (Dexie / IndexedDB)', () => {
   it('updatePage sin touchUpdatedAt no altera el orden de paginas', async () => {
     const notebook = await createNotebook('Bookmark orden')
     const [firstPage] = await listPagesByNotebook(notebook.id)
+    await new Promise((r) => setTimeout(r, 2))
     const secondPage = await createPage(notebook.id, 'Segunda')
+    await new Promise((r) => setTimeout(r, 2))
     const thirdPage = await createPage(notebook.id, 'Tercera')
 
     const orderBefore = (await listPagesByNotebook(notebook.id)).map((page) => page.id)
@@ -125,8 +127,11 @@ describe('persistencia (Dexie / IndexedDB)', () => {
 
   it('movePageBefore reordena paginas por updatedAt', async () => {
     const notebook = await createNotebook('Orden')
+    await new Promise((r) => setTimeout(r, 2))
     const pageA = await createPage(notebook.id, 'A')
+    await new Promise((r) => setTimeout(r, 2))
     const pageB = await createPage(notebook.id, 'B')
+    await new Promise((r) => setTimeout(r, 2))
     const pageC = await createPage(notebook.id, 'C')
 
     await movePageBefore(notebook.id, pageC.id, pageA.id)

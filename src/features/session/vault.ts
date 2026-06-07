@@ -9,6 +9,22 @@ export async function unlockVaultWithPin(pin: string, salt: string, iterations =
   activeContentKey = await deriveContentKey(pin, salt, iterations)
 }
 
+export async function unlockVaultWithDirectKey(rawKeyBase64: string): Promise<void> {
+  const binary = atob(rawKeyBase64)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+
+  activeContentKey = await crypto.subtle.importKey(
+    'raw',
+    bytes.buffer,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt'],
+  )
+}
+
 export function lockVault(): void {
   activeContentKey = null
 }

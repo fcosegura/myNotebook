@@ -10,7 +10,7 @@ import {
 } from 'react'
 import './App.css'
 import type MiniSearch from 'minisearch'
-import type { Attachment, Notebook, Page, UserLocal } from './storage/db'
+import { switchDatabase, type Attachment, type Notebook, type Page, type UserLocal } from './storage/db'
 import { parseEncryptedBackup, serializeEncryptedBackup } from './features/backup/crypto'
 import {
   addAttachment,
@@ -38,7 +38,7 @@ import {
 } from './storage/repository'
 import { buildSearchIndex, querySearch, type SearchResult } from './features/search/search'
 import { createSalt, hashPin } from './features/session/session'
-import { lockVault, unlockVaultWithPin } from './features/session/vault'
+import { lockVault, unlockVaultWithPin, unlockVaultWithDirectKey } from './features/session/vault'
 import { AppHeader } from './ui/AppHeader'
 import { LockScreen } from './ui/LockScreen'
 import { Sidebar } from './ui/Sidebar'
@@ -99,6 +99,8 @@ const DEFAULT_EDITOR_FORMAT_STATE: EditorFormatState = {
 function isPageBookmarked(page: { tags: string[] }): boolean {
   return page.tags.includes(BOOKMARK_TAG)
 }
+
+const processedTokens = new Set<string>()
 
 function App() {
   const [user, setUser] = useState<UserLocal | null>(null)
@@ -344,11 +346,151 @@ function App() {
     setAllPages(await listAllPages())
   }
 
+  async function syncPendingJiraNotebooks(sessionToken: string, pwaOrigin: string) {
+    try {
+      const resp = await fetch(`${pwaOrigin}/api/mynotebook/pending-notebooks`, {
+        headers: {
+          'Authorization': `Bearer ${sessionToken}`
+        }
+      })
+      if (!resp.ok) {
+        console.error('Failed to fetch pending notebooks, status:', resp.status)
+        return
+      }
+      
+      const { tickets } = await resp.json()
+      if (!Array.isArray(tickets) || tickets.length === 0) return
+      
+      const existingNotebooks = await listNotebooks()
+      const existingTitles = new Set(existingNotebooks.map(nb => nb.title.trim().toLowerCase()))
+      
+      let createdAny = false
+      for (const ticket of tickets) {
+        const cleanTicket = ticket.trim()
+        if (cleanTicket) {
+          if (!existingTitles.has(cleanTicket.toLowerCase())) {
+            await createNotebook(cleanTicket)
+            createdAny = true
+          }
+          
+          await fetch(`${pwaOrigin}/api/mynotebook/mark-notebook-created`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${sessionToken}`
+            },
+            body: JSON.stringify({ ticketNumber: cleanTicket })
+          }).catch(err => console.error('Failed to notify creation:', err))
+        }
+      }
+      
+      if (createdAny) {
+        markDataSaved()
+      }
+    } catch (err) {
+      console.error('Failed to sync pending notebooks:', err)
+    }
+  }
+
+  async function openNotebookByTitle(title: string) {
+    const freshNotebooks = await listNotebooks()
+    const target = freshNotebooks.find(nb => nb.title.trim().toLowerCase() === title.trim().toLowerCase())
+    if (target) {
+      setSelectedNotebookId(target.id)
+      await refreshPages(target.id)
+    }
+  }
+
   async function bootstrap() {
+    const params = new URLSearchParams(window.location.search)
+    const urlToken = params.get('token')
+    const urlNotebook = params.get('notebook')
+    
+    if (urlToken) {
+      if (processedTokens.has(urlToken)) {
+        return
+      }
+      processedTokens.add(urlToken)
+    }
+
     lockVault()
     const localUser = await ensureUser()
     setUser(localUser)
-    // Always show lock/setup screen on app entry.
+    
+    if (urlToken) {
+      setPinError('Autenticando con taskmanagerpwa...')
+      try {
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        const pwaOrigin = isLocal
+          ? 'http://localhost:8788'
+          : 'https://taskmanagerpwa.fcosegura.workers.dev'
+          
+        const resp = await fetch(`${pwaOrigin}/api/mynotebook/verify-token?token=${encodeURIComponent(urlToken)}`)
+        if (!resp.ok) {
+          throw new Error('El token de integración es inválido o ha expirado.')
+        }
+        
+        const data = await resp.json()
+        const { userIdHash, notebookKey, sessionToken } = data
+        
+        await switchDatabase(userIdHash)
+        await unlockVaultWithDirectKey(notebookKey)
+        
+        sessionStorage.setItem('mynotebook_bypass_key', notebookKey)
+        sessionStorage.setItem('mynotebook_bypass_user', userIdHash)
+        sessionStorage.setItem('mynotebook_bypass_token', sessionToken)
+        
+        const cleanUrl = window.location.pathname + (urlNotebook ? `?notebook=${encodeURIComponent(urlNotebook)}` : '')
+        window.history.replaceState({}, document.title, cleanUrl)
+        
+        setUnlocked(true)
+        setPinError('')
+        
+        await syncPendingJiraNotebooks(sessionToken, pwaOrigin)
+        await refreshNotebooks()
+        
+        if (urlNotebook) {
+          await openNotebookByTitle(urlNotebook)
+        }
+        return
+      } catch (err) {
+        if (urlToken) {
+          processedTokens.delete(urlToken)
+        }
+        console.error('PWA integration error:', err)
+        setPinError((err as Error).message || 'Error de autenticación con la PWA.')
+      }
+    } else {
+      const storedKey = sessionStorage.getItem('mynotebook_bypass_key')
+      const storedUser = sessionStorage.getItem('mynotebook_bypass_user')
+      const storedToken = sessionStorage.getItem('mynotebook_bypass_token')
+      
+      if (storedKey && storedUser && storedToken) {
+        try {
+          await switchDatabase(storedUser)
+          await unlockVaultWithDirectKey(storedKey)
+          setUnlocked(true)
+          
+          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+          const pwaOrigin = isLocal
+            ? 'http://localhost:8788'
+            : 'https://taskmanagerpwa.fcosegura.workers.dev'
+            
+          await syncPendingJiraNotebooks(storedToken, pwaOrigin)
+          await refreshNotebooks()
+          
+          if (urlNotebook) {
+            await openNotebookByTitle(urlNotebook)
+            const cleanUrl = window.location.pathname
+            window.history.replaceState({}, document.title, cleanUrl)
+          }
+          return
+        } catch (err) {
+          sessionStorage.clear()
+        }
+      }
+    }
+    
     setUnlocked(false)
   }
 
@@ -678,6 +820,7 @@ function App() {
       }
       await pagePersistChainRef.current
       lockVault()
+      sessionStorage.clear()
       setUnlocked(false)
       setPinInput('')
       setPinError('Sesión cerrada. Ingresa tu PIN para volver a ver tus notas.')
