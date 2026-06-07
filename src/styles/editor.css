@@ -230,10 +230,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 0.72em;
-  height: 0.72em;
-  line-height: 1;
-  transform: translateY(0.02em);
+  width: 8px;
+  height: 8px;
+  margin-top: -2px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  opacity: 0.78;
 }
 
 .editor-format-popover {
