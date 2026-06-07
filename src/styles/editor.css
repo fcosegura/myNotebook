@@ -38,6 +38,10 @@
   color: var(--danger);
 }
 
+.editor-context-actions .favorite-context-action {
+  width: 142px;
+}
+
 .editor-header {
   display: flex;
   align-items: center;

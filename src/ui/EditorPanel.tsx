@@ -117,7 +117,7 @@ export function EditorPanel({
                 <button type="button" onClick={onSelectPreviousPage} disabled={!canMoveToPreviousPage} title="Página anterior">‹</button>
                 <button type="button" onClick={onSelectNextPage} disabled={!canMoveToNextPage} title="Página siguiente">›</button>
                 <button type="button" onClick={onMovePage}>Mover</button>
-                <button type="button" onClick={onPageBookmark}>
+                <button type="button" className="favorite-context-action" onClick={onPageBookmark}>
                   {isCurrentPageBookmarked ? 'Favorita' : 'Marcar favorita'}
                 </button>
                 <button type="button" className="danger-soft-action" onClick={onPageDelete}>Eliminar</button>
