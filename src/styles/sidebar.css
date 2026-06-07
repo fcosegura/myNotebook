@@ -126,6 +126,19 @@
   gap: 6px;
 }
 
+.collapse-toggle {
+  border-color: #c9d7f0;
+  background: var(--surface);
+  color: var(--text-soft);
+}
+
+.collapse-toggle:hover,
+.collapse-toggle:focus-visible {
+  border-color: #9db6e6;
+  background: var(--surface-hover);
+  color: var(--accent-strong);
+}
+
 .column-title-left,
 .notebook-tree-header,
 .list-item-shell {
