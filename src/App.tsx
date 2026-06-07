@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -38,6 +39,30 @@ import {
 import { buildSearchIndex, querySearch, type SearchResult } from './features/search/search'
 import { createSalt, hashPin } from './features/session/session'
 import { lockVault, unlockVaultWithPin } from './features/session/vault'
+import { AppHeader } from './ui/AppHeader'
+import { LockScreen } from './ui/LockScreen'
+import { Sidebar } from './ui/Sidebar'
+import { EditorPanel } from './ui/EditorPanel'
+import {
+  AppDialog,
+  ImageModal,
+  MovePageDialog,
+  SecretDialog,
+} from './ui/AppDialogs'
+import { useAppDialogs } from './ui/hooks/useAppDialogs'
+import { useImageModal } from './ui/hooks/useImageModal'
+import { useInactivityLock } from './ui/hooks/useInactivityLock'
+import { useSidebarState } from './ui/hooks/useSidebarState'
+import {
+  appendImageReferenceToContent,
+  blockquoteContainingRange,
+  insertCaretMarkerBeforeCollapsed,
+  insertImagePasteMarker,
+  insertImageReferenceAtPasteMarker,
+  linkifyEditorAutoLinksPreservingCaret,
+  restoreCaretAtMarker,
+  unwrapBlockquoteElement,
+} from './ui/editorRichText'
 
 const BOOKMARK_TAG = 'bookmark'
 const INACTIVITY_AUTO_LOCK_MS = 30 * 60 * 1000
@@ -46,11 +71,29 @@ const TEXT_COLOR_PALETTE = [
   '#2563eb', '#c084fc', '#f472b6', '#fdba74',
 ]
 const FONT_SIZE_STEPS_PX = [12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32] as const
-const IMG_REF_IN_TEXT_PATTERN = /\[img:([^\]]+)\]/g
-const EDITOR_AUTO_LINK_CLASS = 'editor-auto-link'
-/** http(s) and www. URLs in plain text (not inside existing anchors). */
-const AUTO_LINK_URL_PATTERN = /\bhttps?:\/\/[^\s<>"')]+|\bwww\.[^\s<>"')]+/gi
 const MAX_PIN_DIGITS = 32
+type EditorBlockFormat = 'P' | 'H1' | 'H2' | 'H3'
+type EditorFormatState = {
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  strikeThrough: boolean
+  unorderedList: boolean
+  orderedList: boolean
+  blockquote: boolean
+  block: EditorBlockFormat
+}
+
+const DEFAULT_EDITOR_FORMAT_STATE: EditorFormatState = {
+  bold: false,
+  italic: false,
+  underline: false,
+  strikeThrough: false,
+  unorderedList: false,
+  orderedList: false,
+  blockquote: false,
+  block: 'P',
+}
 
 function isNotebookArchived(notebook: Notebook): boolean {
   return notebook.archived === true
@@ -58,20 +101,6 @@ function isNotebookArchived(notebook: Notebook): boolean {
 
 function isPageBookmarked(page: { tags: string[] }): boolean {
   return page.tags.includes(BOOKMARK_TAG)
-}
-
-function PageTreeTitle({ page }: { page: Page }) {
-  const bookmarked = isPageBookmarked(page)
-  return (
-    <span className="page-tree-label">
-      {bookmarked ? (
-        <span className="item-icon page-tree-bookmark-icon" aria-hidden="true" title="Marcada como favorita">
-          🔖
-        </span>
-      ) : null}
-      <span className="page-tree-title-text">{page.title}</span>
-    </span>
-  )
 }
 
 function formatLastSavedDisplay(ts: number): string {
@@ -88,7 +117,6 @@ function App() {
   const [pinError, setPinError] = useState('')
   const [unlockAttempts, setUnlockAttempts] = useState(0)
   const [unlockBlockedUntil, setUnlockBlockedUntil] = useState(0)
-  const inactivityTimerRef = useRef<number | null>(null)
   const submitLockScreenRef = useRef<() => void>(() => {})
 
   const [notebooks, setNotebooks] = useState<Notebook[]>([])
@@ -106,38 +134,76 @@ function App() {
   const [logoutPending, setLogoutPending] = useState(false)
   const [backupStatus, setBackupStatus] = useState('')
   const [backupStatusType, setBackupStatusType] = useState<'success' | 'error' | 'info'>('info')
-  const [secretDialog, setSecretDialog] = useState<{ title: string; confirmLabel: string } | null>(null)
-  const [secretInput, setSecretInput] = useState('')
-  const [secretVisible, setSecretVisible] = useState(false)
-  const [appDialog, setAppDialog] = useState<AppDialogState | null>(null)
-  const [appDialogInput, setAppDialogInput] = useState('')
-  const [movePageDialogOpen, setMovePageDialogOpen] = useState(false)
-  const [moveBeforePageId, setMoveBeforePageId] = useState<string>('')
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [commandOpen, setCommandOpen] = useState(false)
   const [formatMenuOpen, setFormatMenuOpen] = useState(false)
+  const [editorFormatState, setEditorFormatState] = useState<EditorFormatState>(DEFAULT_EDITOR_FORMAT_STATE)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
-  const [notebooksHidden, setNotebooksHidden] = useState(false)
-  const [notebookMenuId, setNotebookMenuId] = useState<string | null>(null)
-  const [pageMenuId, setPageMenuId] = useState<string | null>(null)
-  const [sidebarView, setSidebarView] = useState<'notebooks' | 'pages'>('notebooks')
-  const [sidebarPanelMode, setSidebarPanelMode] = useState<'library' | 'bookmarks'>('library')
-  const [bookmarkNotebooksCollapsed, setBookmarkNotebooksCollapsed] = useState<Set<string>>(new Set())
-  const [notebookSidebarMode, setNotebookSidebarMode] = useState<'active' | 'archived'>('active')
-  const notebookSidebarModeRef = useRef<'active' | 'archived'>('active')
-  const [imageModalAttachment, setImageModalAttachment] = useState<Attachment | null>(null)
-  const imageModalUrl = useMemo(() => {
-    if (!imageModalAttachment) {
-      return null
-    }
-    return URL.createObjectURL(imageModalAttachment.blob)
-  }, [imageModalAttachment])
-  const secretResolverRef = useRef<((value: string | null) => void) | null>(null)
-  const appDialogResolverRef = useRef<((value: unknown) => void) | null>(null)
+  const {
+    secretDialog,
+    secretInput,
+    secretVisible,
+    appDialog,
+    appDialogInput,
+    movePageDialogOpen,
+    moveBeforePageId,
+    setSecretInput,
+    setSecretVisible,
+    setAppDialogInput,
+    setMoveBeforePageId,
+    openMovePageDialog: openMovePageDialogState,
+    closeMovePageDialog,
+    requestSecret,
+    closeSecretDialog,
+    requestTextDialog,
+    requestConfirmDialog,
+    requestAlertDialog,
+    closeAppDialog,
+  } = useAppDialogs()
+  const {
+    notebooksHidden,
+    notebookMenuId,
+    pageMenuId,
+    sidebarView,
+    sidebarPanelMode,
+    notebookSidebarMode,
+    notebookSidebarModeRef,
+    notebooksCollapsed,
+    setNotebooksHidden,
+    setNotebookMenuId,
+    setPageMenuId,
+    setSidebarView,
+    setSidebarPanelMode,
+    setNotebookSidebarMode,
+    setNotebooksCollapsed,
+    toggleBookmarkNotebookExpanded,
+    isBookmarkNotebookExpanded,
+    toggleLibraryNotebookExpanded,
+    isLibraryNotebookExpanded,
+    setLibraryNotebookExpanded,
+  } = useSidebarState()
+  const {
+    imageModalAttachment,
+    imageModalUrl,
+    openAttachmentModal,
+    closeAttachmentModal,
+  } = useImageModal()
 
-  const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
   const editorRef = useRef<HTMLDivElement | null>(null)
   const editorTitleRef = useRef<HTMLInputElement | null>(null)
   const forceSaveNoteRef = useRef<() => Promise<void>>(async () => {})
+  const refreshEditorFormatStateRef = useRef<() => void>(() => {})
+  const applyEditorCommandRef = useRef<(
+    command:
+      | 'bold'
+      | 'italic'
+      | 'underline'
+      | 'strikeThrough'
+      | 'foreColor'
+      | 'insertUnorderedList'
+      | 'insertOrderedList',
+    value?: string,
+  ) => void>(() => {})
   const lastSyncedEditorHtmlRef = useRef<string>('')
   /** Evita pisar el DOM del editor con `selectedPage` desactualizado al re-renderizar la misma pagina. */
   const editorBoundPageIdRef = useRef<string | null>(null)
@@ -146,15 +212,11 @@ function App() {
 
   useEffect(() => {
     void bootstrap()
-  }, [])
+  }, [setNotebookMenuId, setPageMenuId])
 
   useEffect(() => {
     selectedNotebookIdRef.current = selectedNotebookId
   }, [selectedNotebookId])
-
-  useEffect(() => {
-    notebookSidebarModeRef.current = notebookSidebarMode
-  }, [notebookSidebarMode])
 
   function markDataSaved() {
     setLastSavedAt(Date.now())
@@ -170,75 +232,29 @@ function App() {
     return () => {
       window.removeEventListener('click', handleGlobalClick)
     }
+  }, [setNotebookMenuId, setPageMenuId])
+
+  const handleAutoLock = useCallback(() => {
+    lockVault()
+    setUnlocked(false)
+    setPinInput('')
+    setPinError('Sesion bloqueada por inactividad. Ingresa tu PIN.')
   }, [])
 
-  useEffect(() => {
-    if (!imageModalUrl) {
-      return
-    }
-    return () => {
-      URL.revokeObjectURL(imageModalUrl)
-    }
-  }, [imageModalUrl])
-
-  useEffect(() => {
-    if (!unlocked) {
-      if (inactivityTimerRef.current !== null) {
-        window.clearTimeout(inactivityTimerRef.current)
-        inactivityTimerRef.current = null
-      }
-      return
-    }
-
-    const scheduleAutoLock = () => {
-      if (inactivityTimerRef.current !== null) {
-        window.clearTimeout(inactivityTimerRef.current)
-      }
-      inactivityTimerRef.current = window.setTimeout(() => {
-        void (async () => {
-          try {
-            await forceSaveNoteRef.current()
-            await pagePersistChainRef.current
-          } catch (error) {
-            console.error('Auto-lock: guardado previo fallo:', error)
-          }
-          lockVault()
-          setUnlocked(false)
-          setPinInput('')
-          setPinError('Sesion bloqueada por inactividad. Ingresa tu PIN.')
-        })()
-      }, INACTIVITY_AUTO_LOCK_MS)
-    }
-
-    const handleActivity = () => {
-      scheduleAutoLock()
-    }
-
-    scheduleAutoLock()
-
-    window.addEventListener('pointerdown', handleActivity)
-    window.addEventListener('keydown', handleActivity)
-    window.addEventListener('mousemove', handleActivity)
-    window.addEventListener('touchstart', handleActivity, { passive: true })
-    window.addEventListener('scroll', handleActivity, { passive: true })
-
-    return () => {
-      window.removeEventListener('pointerdown', handleActivity)
-      window.removeEventListener('keydown', handleActivity)
-      window.removeEventListener('mousemove', handleActivity)
-      window.removeEventListener('touchstart', handleActivity)
-      window.removeEventListener('scroll', handleActivity)
-      if (inactivityTimerRef.current !== null) {
-        window.clearTimeout(inactivityTimerRef.current)
-        inactivityTimerRef.current = null
-      }
-    }
-  }, [unlocked])
+  useInactivityLock({
+    unlocked,
+    delayMs: INACTIVITY_AUTO_LOCK_MS,
+    forceSaveNoteRef,
+    pagePersistChainRef,
+    onAutoLock: handleAutoLock,
+  })
 
   const selectedNotebook = useMemo(
     () => notebooks.find((notebook) => notebook.id === selectedNotebookId) ?? null,
     [notebooks, selectedNotebookId],
   )
+
+  const selectedNotebookReadOnly = selectedNotebook ? isNotebookArchived(selectedNotebook) : false
 
   const sidebarNotebooks = useMemo(
     () =>
@@ -252,6 +268,25 @@ function App() {
     () => pages.find((page) => page.id === selectedPageId) ?? null,
     [pages, selectedPageId],
   )
+
+  const selectedPageIndex = useMemo(
+    () => pages.findIndex((page) => page.id === selectedPageId),
+    [pages, selectedPageId],
+  )
+
+  const saveStatusLabel = useMemo(() => {
+    if (forceSavePending) {
+      return 'Guardando…'
+    }
+    if (pastingImage) {
+      return 'Procesando imagen…'
+    }
+    if (lastSavedAt !== null) {
+      const secondsAgo = Math.max(0, Math.round((Date.now() - lastSavedAt) / 1000))
+      return secondsAgo < 10 ? 'Guardado ahora' : 'Sin cambios'
+    }
+    return 'Sin cambios'
+  }, [forceSavePending, lastSavedAt, pastingImage])
 
   useEffect(() => {
     if (!unlocked) {
@@ -314,21 +349,6 @@ function App() {
       .sort((a, b) => a.notebook.title.localeCompare(b.notebook.title, 'es'))
   }, [allPages, notebooks])
 
-  function toggleBookmarkNotebookExpanded(notebookId: string) {
-    setBookmarkNotebooksCollapsed((current) => {
-      const next = new Set(current)
-      if (next.has(notebookId)) {
-        next.delete(notebookId)
-      } else {
-        next.add(notebookId)
-      }
-      return next
-    })
-  }
-
-  function isBookmarkNotebookExpanded(notebookId: string) {
-    return !bookmarkNotebooksCollapsed.has(notebookId)
-  }
 
   async function refreshAllPages() {
     setAllPages(await listAllPages())
@@ -356,7 +376,6 @@ function App() {
     if (allNotebooks.length === 0) {
       const notebook = await createNotebook('Mi libreta')
       markDataSaved()
-      notebookSidebarModeRef.current = 'active'
       setNotebookSidebarMode('active')
       const refreshed = await listNotebooks()
       setNotebooks(refreshed)
@@ -406,6 +425,11 @@ function App() {
   }
 
   async function handleNotebookCreate() {
+    if (notebookSidebarModeRef.current === 'archived') {
+      setBackupStatus('Las libretas archivadas son de solo lectura. Cambia a Activas para crear una libreta.')
+      setBackupStatusType('info')
+      return
+    }
     const notebookName = await requestTextDialog({
       title: 'Nueva libreta',
       message: 'Elige un nombre para la libreta.',
@@ -424,24 +448,23 @@ function App() {
   }
 
   async function handlePageCreate() {
-    if (!selectedNotebookId) {
+    if (!selectedNotebookId || selectedNotebookReadOnly) {
+      if (selectedNotebookReadOnly) {
+        setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+        setBackupStatusType('info')
+      }
       return
     }
-
-    const pageName = await requestTextDialog({
-      title: 'Nueva pagina',
-      message: 'Escribe el nombre de la pagina.',
-      confirmLabel: 'Crear',
-      placeholder: 'Nombre de la pagina',
-    })
-    if (pageName === null) {
-      return
-    }
-
-    const page = await createPage(selectedNotebookId, pageName)
+    const page = await createPage(selectedNotebookId, 'Nueva página')
+    setSidebarPanelMode('library')
+    setSidebarView('pages')
     await refreshPages(selectedNotebookId)
     setSelectedPageId(page.id)
     markDataSaved()
+    window.setTimeout(() => {
+      editorTitleRef.current?.focus()
+      editorTitleRef.current?.select()
+    }, 0)
   }
 
   function enqueuePagePersist(task: () => Promise<void>): Promise<void> {
@@ -456,6 +479,13 @@ function App() {
   async function handlePageBookmark(page?: Page) {
     const current = page ?? selectedPage
     if (!current) {
+      return
+    }
+    const notebook = notebooks.find((entry) => entry.id === current.notebookId)
+    if (notebook && isNotebookArchived(notebook)) {
+      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+      setBackupStatusType('info')
+      setPageMenuId(null)
       return
     }
     const pageId = current.id
@@ -522,7 +552,6 @@ function App() {
 
   function handleNotebookSidebarModeChange(mode: 'active' | 'archived') {
     setNotebookSidebarMode(mode)
-    notebookSidebarModeRef.current = mode
     setNotebookMenuId(null)
     void refreshNotebooks()
   }
@@ -546,6 +575,13 @@ function App() {
     if (!current) {
       return
     }
+    const notebook = notebooks.find((entry) => entry.id === current.notebookId)
+    if (notebook && isNotebookArchived(notebook)) {
+      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+      setBackupStatusType('info')
+      setPageMenuId(null)
+      return
+    }
     const confirmed = await requestConfirmDialog({
       title: 'Eliminar pagina',
       message: `Se eliminara la pagina "${current.title}" con sus adjuntos.`,
@@ -565,20 +601,18 @@ function App() {
   }
 
   function openMovePageDialog() {
-    if (!selectedPage) {
+    if (!selectedPage || selectedNotebookReadOnly) {
+      if (selectedNotebookReadOnly) {
+        setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+        setBackupStatusType('info')
+      }
       return
     }
-    setMoveBeforePageId('')
-    setMovePageDialogOpen(true)
-  }
-
-  function closeMovePageDialog() {
-    setMovePageDialogOpen(false)
-    setMoveBeforePageId('')
+    openMovePageDialogState()
   }
 
   async function handleMovePageConfirm() {
-    if (!selectedNotebookId || !selectedPage) {
+    if (!selectedNotebookId || !selectedPage || selectedNotebookReadOnly) {
       return
     }
     await movePageBefore(selectedNotebookId, selectedPage.id, moveBeforePageId || null)
@@ -588,6 +622,9 @@ function App() {
   }
 
   async function handlePageFieldChange<K extends keyof Page>(key: K, value: Page[K]) {
+    if (selectedNotebookReadOnly) {
+      return
+    }
     const pageId = selectedPage?.id
     if (!pageId) {
       return
@@ -606,6 +643,11 @@ function App() {
   }
 
   async function forceSaveNote() {
+    if (selectedNotebookReadOnly) {
+      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+      setBackupStatusType('info')
+      return
+    }
     if (!selectedPage || !editorRef.current) {
       setBackupStatus('No hay pagina seleccionada para guardar.')
       setBackupStatusType('error')
@@ -619,7 +661,7 @@ function App() {
       lastSyncedEditorHtmlRef.current = html
 
       const rawTitle = editorTitleRef.current?.value ?? selectedPage.title
-      const nextTitle = rawTitle.trim() ? rawTitle.trim() : (selectedPage.title.trim() || 'Nueva pagina')
+      const nextTitle = rawTitle.trim() ? rawTitle.trim() : (selectedPage.title.trim() || 'Nueva página')
 
       await handlePageFieldChange('title', nextTitle)
       await handlePageFieldChange('content', html)
@@ -645,18 +687,14 @@ function App() {
         await forceSaveNote()
       }
       await pagePersistChainRef.current
-      if (inactivityTimerRef.current !== null) {
-        window.clearTimeout(inactivityTimerRef.current)
-        inactivityTimerRef.current = null
-      }
       lockVault()
       setUnlocked(false)
       setPinInput('')
-      setPinError('Sesion cerrada. Ingresa tu PIN para volver a ver tus notas.')
+      setPinError('Sesión cerrada. Ingresa tu PIN para volver a ver tus notas.')
       setActionsOpen(false)
       setSearchTerm('')
       setSearchResults([])
-      setBackupStatus('Sesion cerrada; tus notas siguen guardadas en este navegador.')
+      setBackupStatus('Sesión cerrada; tus notas siguen guardadas en este navegador.')
       setBackupStatusType('info')
     } finally {
       setLogoutPending(false)
@@ -669,6 +707,9 @@ function App() {
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (!event.ctrlKey && !event.metaKey) {
+        return
+      }
+      if (selectedNotebookReadOnly) {
         return
       }
       if (event.key.toLowerCase() !== 's') {
@@ -685,14 +726,64 @@ function App() {
     return () => {
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [unlocked])
+  }, [unlocked, selectedNotebookReadOnly])
+
+  useEffect(() => {
+    if (!unlocked) {
+      return
+    }
+    const onSelectionChange = () => {
+      refreshEditorFormatStateRef.current()
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      const editor = editorRef.current
+      const target = event.target as Node | null
+      if (!editor || !target || !editor.contains(target)) {
+        return
+      }
+      if (!event.ctrlKey && !event.metaKey) {
+        return
+      }
+      const key = event.key.toLowerCase()
+      if (key === 'b') {
+        event.preventDefault()
+        applyEditorCommandRef.current('bold')
+        return
+      }
+      if (key === 'i') {
+        event.preventDefault()
+        applyEditorCommandRef.current('italic')
+        return
+      }
+      if (key === 'u') {
+        event.preventDefault()
+        applyEditorCommandRef.current('underline')
+        return
+      }
+      if (event.shiftKey && event.key === '7') {
+        event.preventDefault()
+        applyEditorCommandRef.current('insertOrderedList')
+        return
+      }
+      if (event.shiftKey && event.key === '8') {
+        event.preventDefault()
+        applyEditorCommandRef.current('insertUnorderedList')
+      }
+    }
+    document.addEventListener('selectionchange', onSelectionChange)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('selectionchange', onSelectionChange)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [unlocked, selectedPageId, selectedNotebookReadOnly])
 
   async function handleSetupPin() {
     if (!user) {
       return
     }
     if (pinInput.trim().length < 4) {
-      setPinError('El PIN necesita minimo 4 digitos.')
+      setPinError('El PIN necesita mínimo 4 dígitos.')
       return
     }
     const salt = createSalt()
@@ -742,7 +833,7 @@ function App() {
       try {
         await encryptExistingDataAtRest()
       } catch (error) {
-        setBackupStatus(`No se pudo completar la migracion de cifrado: ${(error as Error).message}`)
+        setBackupStatus(`No se pudo completar la migración de cifrado: ${(error as Error).message}`)
         setBackupStatusType('error')
       }
       await refreshNotebooks()
@@ -754,7 +845,7 @@ function App() {
       setUnlockAttempts(0)
       setUnlockBlockedUntil(0)
     } catch (error) {
-      setPinError((error as Error).message || 'No se pudo desbloquear la sesion.')
+      setPinError((error as Error).message || 'No se pudo desbloquear la sesión.')
     }
   }
 
@@ -813,7 +904,7 @@ function App() {
     if (!user?.sessionConfig) {
       await requestAlertDialog({
         title: 'PIN no configurado',
-        message: 'Primero configura un PIN para habilitar esta opcion.',
+        message: 'Primero configura un PIN para habilitar esta opción.',
       })
       return
     }
@@ -841,8 +932,8 @@ function App() {
     }
     if (newPin.trim().length < 4) {
       await requestAlertDialog({
-        title: 'PIN invalido',
-        message: 'El PIN nuevo necesita minimo 4 digitos.',
+        title: 'PIN inválido',
+        message: 'El PIN nuevo necesita mínimo 4 dígitos.',
       })
       return
     }
@@ -876,7 +967,12 @@ function App() {
   }
 
   async function processImagePaste(event: ClipboardEvent<HTMLDivElement>) {
-    if (!selectedPageId) {
+    if (!selectedPageId || selectedNotebookReadOnly) {
+      if (selectedNotebookReadOnly) {
+        event.preventDefault()
+        setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+        setBackupStatusType('info')
+      }
       return
     }
     const item = Array.from(event.clipboardData.items).find((entry) => entry.type.startsWith('image/'))
@@ -944,7 +1040,57 @@ function App() {
     }
     lastSyncedEditorHtmlRef.current = html
     void handlePageFieldChange('content', html)
+    refreshEditorFormatStateSoon()
   }
+
+  function editorSelectionRange(): Range | null {
+    const editor = editorRef.current
+    const selection = window.getSelection()
+    if (!editor || !selection || selection.rangeCount === 0) {
+      return null
+    }
+    const range = selection.getRangeAt(0)
+    return editor.contains(range.commonAncestorContainer) ? range : null
+  }
+
+  function blockFormatForRange(range: Range, editor: HTMLElement): EditorBlockFormat {
+    let el: HTMLElement | null =
+      range.startContainer.nodeType === Node.TEXT_NODE
+        ? range.startContainer.parentElement
+        : (range.startContainer as HTMLElement)
+    while (el && el !== editor) {
+      if (el.tagName === 'H1' || el.tagName === 'H2' || el.tagName === 'H3') {
+        return el.tagName as EditorBlockFormat
+      }
+      el = el.parentElement
+    }
+    return 'P'
+  }
+
+  function refreshEditorFormatState() {
+    const editor = editorRef.current
+    const range = editorSelectionRange()
+    if (!editor || !range) {
+      setEditorFormatState(DEFAULT_EDITOR_FORMAT_STATE)
+      return
+    }
+    setEditorFormatState({
+      bold: document.queryCommandState('bold'),
+      italic: document.queryCommandState('italic'),
+      underline: document.queryCommandState('underline'),
+      strikeThrough: document.queryCommandState('strikeThrough'),
+      unorderedList: document.queryCommandState('insertUnorderedList'),
+      orderedList: document.queryCommandState('insertOrderedList'),
+      blockquote: blockquoteContainingRange(editor, range) !== null,
+      block: blockFormatForRange(range, editor),
+    })
+  }
+
+  function refreshEditorFormatStateSoon() {
+    window.setTimeout(refreshEditorFormatState, 0)
+  }
+
+  refreshEditorFormatStateRef.current = refreshEditorFormatState
 
   function applyEditorCommand(
     command:
@@ -957,25 +1103,40 @@ function App() {
       | 'insertOrderedList',
     value?: string,
   ) {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     editorRef.current.focus()
     document.execCommand(command, false, value)
     flushEditorContentFromDom(editorRef.current)
+    refreshEditorFormatStateSoon()
   }
 
+  applyEditorCommandRef.current = applyEditorCommand
+
   function applyEditorHistory(action: 'undo' | 'redo') {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     editorRef.current.focus()
     document.execCommand(action, false)
     flushEditorContentFromDom(editorRef.current)
+    refreshEditorFormatStateSoon()
+  }
+
+  function applyEditorBlockFormat(format: EditorBlockFormat) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+      return
+    }
+    const tag = format === 'P' ? 'p' : format.toLowerCase()
+    editorRef.current.focus()
+    document.execCommand('formatBlock', false, tag)
+    flushEditorContentFromDom(editorRef.current)
+    refreshEditorFormatStateSoon()
   }
 
   function applyEditorBlockquote() {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -991,11 +1152,70 @@ function App() {
         }
         editor.focus()
         flushEditorContentFromDom(editor)
+        refreshEditorFormatStateSoon()
         return
       }
     }
     document.execCommand('formatBlock', false, 'blockquote')
     flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
+  }
+
+  function clearEditorFormat() {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+      return
+    }
+    const editor = editorRef.current
+    editor.focus()
+    document.execCommand('removeFormat', false)
+    flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
+  }
+
+  function insertHorizontalRule() {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+      return
+    }
+    const editor = editorRef.current
+    editor.focus()
+    document.execCommand('insertHorizontalRule', false)
+    flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
+  }
+
+  function createOrEditLink() {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+      return
+    }
+    const editor = editorRef.current
+    const selection = window.getSelection()
+    const range = editorSelectionRange()
+    if (!selection || !range) {
+      return
+    }
+    const existingLink = (
+      range.startContainer.nodeType === Node.TEXT_NODE
+        ? range.startContainer.parentElement
+        : (range.startContainer as HTMLElement)
+    )?.closest('a')
+    const currentHref = existingLink instanceof HTMLAnchorElement ? existingLink.href : ''
+    const rawUrl = window.prompt('URL del enlace', currentHref)
+    if (rawUrl === null) {
+      editor.focus()
+      return
+    }
+    const url = rawUrl.trim()
+    editor.focus()
+    selection.removeAllRanges()
+    selection.addRange(range)
+    if (!url) {
+      document.execCommand('unlink', false)
+    } else {
+      const href = /^https?:\/\//i.test(url) ? url : `https://${url}`
+      document.execCommand('createLink', false, href)
+    }
+    flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
   }
 
   function getApproxFontSizePxFromRange(range: Range, editorRoot: HTMLElement): number {
@@ -1020,7 +1240,7 @@ function App() {
 
   /** Mueve el tamano del texto seleccionado N escalones en la escala (p. ej. 3 con A+ / A−). */
   function applySelectionFontSizeStep(stepDelta: number) {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -1061,6 +1281,7 @@ function App() {
     selection.addRange(nextRange)
 
     flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
   }
 
   function handleEditorRichTextClick(event: MouseEvent<HTMLDivElement>) {
@@ -1124,7 +1345,6 @@ function App() {
     const all = await listNotebooks()
     const nb = all.find((notebook) => notebook.id === result.notebookId)
     if (nb && isNotebookArchived(nb)) {
-      notebookSidebarModeRef.current = 'archived'
       setNotebookSidebarMode('archived')
     }
     setSelectedNotebookId(result.notebookId)
@@ -1141,20 +1361,69 @@ function App() {
     }
     const nb = notebooks.find((notebook) => notebook.id === target.notebookId)
     if (nb && isNotebookArchived(nb)) {
-      notebookSidebarModeRef.current = 'archived'
       setNotebookSidebarMode('archived')
     } else {
-      notebookSidebarModeRef.current = 'active'
       setNotebookSidebarMode('active')
     }
     setSelectedNotebookId(target.notebookId)
+    setSidebarPanelMode('library')
     setSidebarView('pages')
     await refreshPages(target.notebookId)
     setSelectedPageId(target.id)
   }
 
+  function showBookmarks() {
+    setSidebarPanelMode('bookmarks')
+    setNotebooksHidden(false)
+    setNotebooksCollapsed(false)
+    setActionsOpen(false)
+    setCommandOpen(false)
+  }
+
+  function formatPageUpdatedAt(ts: number) {
+    const date = new Date(ts)
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000
+    if (ts >= startOfToday) {
+      return new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(date)
+    }
+    if (ts >= startOfYesterday) {
+      return 'Ayer'
+    }
+    return new Intl.DateTimeFormat('es', { day: '2-digit', month: 'short' }).format(date)
+  }
+
+  function getPagePreview(page: Page) {
+    const withoutTags = page.content
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    return withoutTags.length > 58 ? `${withoutTags.slice(0, 58)}…` : withoutTags
+  }
+
+  function selectPreviousPage() {
+    if (selectedPageIndex <= 0) {
+      return
+    }
+    setSelectedPageId(pages[selectedPageIndex - 1].id)
+  }
+
+  function selectNextPage() {
+    if (selectedPageIndex < 0 || selectedPageIndex >= pages.length - 1) {
+      return
+    }
+    setSelectedPageId(pages[selectedPageIndex + 1].id)
+  }
+
 
   async function removeAttachment(attachmentId: string) {
+    if (selectedNotebookReadOnly) {
+      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+      setBackupStatusType('info')
+      return
+    }
     await deleteAttachment(attachmentId)
     if (selectedNotebookId) {
       await refreshPages(selectedNotebookId)
@@ -1172,14 +1441,6 @@ function App() {
       setBackupStatus(`No se pudo copiar automaticamente. Referencia: ${token}`)
       setBackupStatusType('error')
     }
-  }
-
-  function openAttachmentModal(attachment: Attachment) {
-    setImageModalAttachment(attachment)
-  }
-
-  function closeAttachmentModal() {
-    setImageModalAttachment(null)
   }
 
   async function handleExportEncryptedBackup() {
@@ -1266,214 +1527,6 @@ function App() {
     input.click()
   }
 
-  function requestSecret(title: string, confirmLabel: string): Promise<string | null> {
-    setSecretInput('')
-    setSecretVisible(false)
-    setSecretDialog({ title, confirmLabel })
-    return new Promise((resolve) => {
-      secretResolverRef.current = resolve
-    })
-  }
-
-  function closeSecretDialog(value: string | null) {
-    setSecretDialog(null)
-    setSecretVisible(false)
-    const resolver = secretResolverRef.current
-    secretResolverRef.current = null
-    resolver?.(value)
-  }
-
-  function requestTextDialog(config: TextDialogConfig): Promise<string | null> {
-    setAppDialogInput(config.initialValue ?? '')
-    setAppDialog({ ...config, kind: 'text' })
-    return new Promise((resolve) => {
-      appDialogResolverRef.current = resolve as (value: unknown) => void
-    })
-  }
-
-  function requestConfirmDialog(config: ConfirmDialogConfig): Promise<boolean> {
-    setAppDialogInput('')
-    setAppDialog({ ...config, kind: 'confirm' })
-    return new Promise((resolve) => {
-      appDialogResolverRef.current = resolve as (value: unknown) => void
-    })
-  }
-
-  async function requestAlertDialog(config: AlertDialogConfig): Promise<void> {
-    setAppDialogInput('')
-    setAppDialog({ ...config, kind: 'alert' })
-    await new Promise<void>((resolve) => {
-      appDialogResolverRef.current = () => resolve()
-    })
-  }
-
-  function closeAppDialog(value: string | boolean | null) {
-    setAppDialog(null)
-    setAppDialogInput('')
-    const resolver = appDialogResolverRef.current
-    appDialogResolverRef.current = null
-    resolver?.(value)
-  }
-
-  function renderAppDialog() {
-    if (!appDialog) {
-      return null
-    }
-
-    const toneClass = appDialog.tone === 'danger' ? 'danger' : 'neutral'
-    const message = appDialog.message ?? ''
-
-    if (appDialog.kind === 'alert') {
-      return (
-        <section className="app-dialog-backdrop" role="presentation">
-          <div className={`app-dialog ${toneClass}`} role="alertdialog" aria-modal="true" aria-label={appDialog.title}>
-            <h2>{appDialog.title}</h2>
-            {message ? <p>{message}</p> : null}
-            <div className="app-dialog-actions">
-              <button type="button" className="primary" onClick={() => closeAppDialog(true)}>
-                {appDialog.confirmLabel ?? 'Entendido'}
-              </button>
-            </div>
-          </div>
-        </section>
-      )
-    }
-
-    if (appDialog.kind === 'confirm') {
-      return (
-        <section className="app-dialog-backdrop" role="presentation">
-          <div className={`app-dialog ${toneClass}`} role="dialog" aria-modal="true" aria-label={appDialog.title}>
-            <h2>{appDialog.title}</h2>
-            {message ? <p>{message}</p> : null}
-            <div className="app-dialog-actions">
-              <button type="button" onClick={() => closeAppDialog(false)}>
-                {appDialog.cancelLabel ?? 'Cancelar'}
-              </button>
-              <button type="button" className="primary" onClick={() => closeAppDialog(true)}>
-                {appDialog.confirmLabel}
-              </button>
-            </div>
-          </div>
-        </section>
-      )
-    }
-
-    return (
-      <section className="app-dialog-backdrop" role="presentation">
-        <div className={`app-dialog ${toneClass}`} role="dialog" aria-modal="true" aria-label={appDialog.title}>
-          <h2>{appDialog.title}</h2>
-          {message ? <p>{message}</p> : null}
-          <input
-            value={appDialogInput}
-            autoFocus
-            onChange={(event) => setAppDialogInput(event.target.value)}
-            placeholder={appDialog.placeholder ?? ''}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                closeAppDialog(appDialogInput.trim() || null)
-              }
-              if (event.key === 'Escape') {
-                closeAppDialog(null)
-              }
-            }}
-          />
-          <div className="app-dialog-actions">
-            <button type="button" onClick={() => closeAppDialog(null)}>
-              {appDialog.cancelLabel ?? 'Cancelar'}
-            </button>
-            <button type="button" className="primary" onClick={() => closeAppDialog(appDialogInput.trim() || null)}>
-              {appDialog.confirmLabel}
-            </button>
-          </div>
-        </div>
-      </section>
-    )
-  }
-
-  function renderSecretDialog() {
-    if (!secretDialog) {
-      return null
-    }
-
-    return (
-      <section className="secret-dialog-backdrop" role="presentation">
-        <div className="secret-dialog" role="dialog" aria-modal="true" aria-label={secretDialog.title}>
-          <h2>{secretDialog.title}</h2>
-          <input
-            value={secretInput}
-            type={secretVisible ? 'text' : 'password'}
-            autoFocus
-            onChange={(event) => setSecretInput(event.target.value)}
-            placeholder="Escribe la clave"
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                closeSecretDialog(secretInput.trim() || null)
-              }
-              if (event.key === 'Escape') {
-                closeSecretDialog(null)
-              }
-            }}
-          />
-          <label className="secret-visibility">
-            <input
-              type="checkbox"
-              checked={secretVisible}
-              onChange={(event) => setSecretVisible(event.target.checked)}
-            />
-            Mostrar clave
-          </label>
-          <div className="secret-dialog-actions">
-            <button type="button" onClick={() => closeSecretDialog(null)}>Cancelar</button>
-            <button type="button" onClick={() => closeSecretDialog(secretInput.trim() || null)}>
-              {secretDialog.confirmLabel}
-            </button>
-          </div>
-        </div>
-      </section>
-    )
-  }
-
-  function renderMovePageDialog() {
-    if (!movePageDialogOpen || !selectedPage) {
-      return null
-    }
-
-    const moveCandidates = pages.filter((page) => page.id !== selectedPage.id)
-
-    return (
-      <section className="app-dialog-backdrop" role="presentation">
-        <div className="app-dialog" role="dialog" aria-modal="true" aria-label="Mover pagina">
-          <h2>Mover pagina</h2>
-          <p>
-            Selecciona antes de que pagina quieres mover <strong>{selectedPage.title}</strong>.
-          </p>
-          <label className="app-dialog-field">
-            <span>Antes de la pagina</span>
-            <select
-              className="page-combo"
-              value={moveBeforePageId}
-              onChange={(event) => setMoveBeforePageId(event.target.value)}
-            >
-              <option value="">Al final</option>
-              {moveCandidates.map((page) => (
-                <option key={page.id} value={page.id}>
-                  {page.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="app-dialog-actions">
-            <button type="button" onClick={closeMovePageDialog}>
-              Cancelar
-            </button>
-            <button type="button" className="primary" onClick={() => void handleMovePageConfirm()}>
-              Mover
-            </button>
-          </div>
-        </div>
-      </section>
-    )
-  }
 
   if (!user) {
     return <main className="app-shell">Inicializando...</main>
@@ -1482,49 +1535,38 @@ function App() {
   if (!unlocked) {
     return (
       <>
-        <main className="app-shell lock-screen">
-          <h1>Libreta local</h1>
-          <p>Tu sesion se guarda solo en este navegador.</p>
-          <div className="pin-entry">
-            <div
-              className="pin-display"
-              role="status"
-              aria-live="polite"
-              aria-label={`${pinInput.length} digitos ingresados`}
-            >
-              {pinInput.length > 0 ? (
-                <span className="pin-display-dots">{'\u2022'.repeat(pinInput.length)}</span>
-              ) : (
-                <span className="pin-display-placeholder">Toca los numeros o escribe con el teclado</span>
-              )}
-            </div>
-            <div className="pin-keypad" role="group" aria-label="Teclado numerico">
-              {(['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const).map((digit) => (
-                <button key={digit} type="button" className="pin-key" onClick={() => appendLockPinDigit(digit)}>
-                  {digit}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="pin-key pin-key-wide"
-                onClick={removeLastLockPinDigit}
-                aria-label="Borrar ultimo digito"
-              >
-                Borrar
-              </button>
-              <button type="button" className="pin-key" onClick={() => appendLockPinDigit('0')}>
-                0
-              </button>
-            </div>
-          </div>
-          <button type="button" onClick={user.sessionConfig ? handleUnlock : handleSetupPin}>
-            {user.sessionConfig ? 'Desbloquear' : 'Configurar PIN local'}
-          </button>
-          {pinError ? <p className="error">{pinError}</p> : null}
-        </main>
-        {renderSecretDialog()}
-        {renderAppDialog()}
-        {renderMovePageDialog()}
+        <LockScreen
+          user={user}
+          pinInput={pinInput}
+          pinError={pinError}
+          onAppendDigit={appendLockPinDigit}
+          onRemoveLastDigit={removeLastLockPinDigit}
+          onUnlock={() => void handleUnlock()}
+          onSetupPin={() => void handleSetupPin()}
+        />
+        <SecretDialog
+          dialog={secretDialog}
+          input={secretInput}
+          visible={secretVisible}
+          onInputChange={setSecretInput}
+          onVisibleChange={setSecretVisible}
+          onClose={closeSecretDialog}
+        />
+        <AppDialog
+          dialog={appDialog}
+          input={appDialogInput}
+          onInputChange={setAppDialogInput}
+          onClose={closeAppDialog}
+        />
+        <MovePageDialog
+          open={movePageDialogOpen}
+          selectedPage={selectedPage}
+          pages={pages}
+          moveBeforePageId={moveBeforePageId}
+          onMoveBeforePageIdChange={setMoveBeforePageId}
+          onCancel={closeMovePageDialog}
+          onConfirm={() => void handleMovePageConfirm()}
+        />
       </>
     )
   }
@@ -1532,948 +1574,178 @@ function App() {
   return (
     <>
       <main className="app-shell">
-        <div className="app-header-block">
-          <header className="app-header">
-            <div className="app-header-start">
-              <h1>Libreta local</h1>
-              <label className="search-input-wrap" aria-label="Busqueda global">
-                <span className="search-icon" aria-hidden="true">🔎</span>
-                <input
-                  className="search-input"
-                  placeholder="Busqueda global inteligente..."
-                  value={searchTerm}
-                  onChange={(event) => handleSearch(event.target.value)}
-                />
-              </label>
-            </div>
-            <button
-              type="button"
-              className={`app-header-actions-btn${actionsOpen ? ' is-open' : ''}`}
-              onClick={() => setActionsOpen((value) => !value)}
-              aria-expanded={actionsOpen}
-              aria-haspopup="true"
-              aria-label="Acciones y configuracion"
-              title="Acciones"
-            >
-              <HeaderMenuIcon />
-            </button>
-          </header>
-          {actionsOpen ? (
-          <section className="actions-menu">
-            <p className="actions-menu-meta" role="status">
-              {lastSavedAt !== null ? (
-                <>
-                  Ultimo guardado local:{' '}
-                  <time dateTime={new Date(lastSavedAt).toISOString()}>
-                    {formatLastSavedDisplay(lastSavedAt)}
-                  </time>
-                </>
-              ) : (
-                'Aun no hay guardados en esta sesion.'
-              )}
-            </p>
-            <button type="button" onClick={() => void handleExportEncryptedBackup()}>Exportar cifrado</button>
-            <button type="button" onClick={() => void handleImportEncryptedBackup()}>Importar cifrado</button>
-            <button type="button" onClick={() => void handlePinChange()}>Cambiar PIN</button>
-            <button type="button" onClick={() => setNotebooksHidden((value) => !value)}>
-              {notebooksHidden ? 'Mostrar barra de libretas' : 'Ocultar barra de libretas'}
-            </button>
-            <button
-              type="button"
-              className="actions-logout-button"
-              disabled={logoutPending || forceSavePending || pastingImage}
-              onClick={() => void handleLogout()}
-              title="Guarda la nota actual, bloquea la sesion y vuelve al PIN (los datos quedan en este dispositivo)"
-            >
-              {logoutPending ? 'Cerrando sesion...' : 'Cerrar sesion'}
-            </button>
-          </section>
-          ) : null}
-        </div>
-        {backupStatus ? <p className={`backup-status ${backupStatusType}`}>{backupStatus}</p> : null}
+        <AppHeader
+          actionsOpen={actionsOpen}
+          commandOpen={commandOpen}
+          searchTerm={searchTerm}
+          lastSavedAt={lastSavedAt}
+          notebooksHidden={notebooksHidden}
+          canCreatePage={selectedNotebookId !== null && !selectedNotebookReadOnly}
+          canCreateNotebook={notebookSidebarMode !== 'archived'}
+          logoutPending={logoutPending}
+          forceSavePending={forceSavePending}
+          pastingImage={pastingImage}
+          searchResults={searchResults}
+          backupStatus={backupStatus}
+          backupStatusType={backupStatusType}
+          onSearch={handleSearch}
+          onToggleCommand={() => {
+            setCommandOpen((value) => !value)
+            setActionsOpen(false)
+          }}
+          onToggleActions={() => {
+            setActionsOpen((value) => !value)
+            setCommandOpen(false)
+          }}
+          onCreatePage={() => void handlePageCreate()}
+          onCreateNotebook={() => void handleNotebookCreate()}
+          onShowBookmarks={showBookmarks}
+          onExportEncryptedBackup={() => void handleExportEncryptedBackup()}
+          onImportEncryptedBackup={() => void handleImportEncryptedBackup()}
+          onPinChange={() => void handlePinChange()}
+          onToggleNotebooksHidden={() => setNotebooksHidden((value) => !value)}
+          onLogout={() => void handleLogout()}
+          onOpenSearchResult={(result) => void openSearchResult(result)}
+          formatLastSavedDisplay={formatLastSavedDisplay}
+        />
 
-      {searchResults.length > 0 ? (
-        <section className="search-results">
-          {searchResults.map((result) => (
-            <button key={result.pageId} type="button" onClick={() => openSearchResult(result)}>
-              <strong>{result.pageTitle}</strong> en {result.notebookTitle}
-              <span>{result.snippet}</span>
-            </button>
-          ))}
+        <section className={`layout master-detail-layout${notebooksHidden ? ' sidebar-hidden' : notebooksCollapsed ? ' sidebar-collapsed' : ''}`}>
+          <Sidebar
+            notebooksHidden={notebooksHidden}
+            notebooksCollapsed={notebooksCollapsed}
+            sidebarPanelMode={sidebarPanelMode}
+            sidebarView={sidebarView}
+            selectedNotebookId={selectedNotebookId}
+            selectedPageId={selectedPageId}
+            selectedNotebook={selectedNotebook}
+            selectedNotebookReadOnly={selectedNotebookReadOnly}
+            pages={pages}
+            sidebarNotebooks={sidebarNotebooks}
+            notebookSidebarMode={notebookSidebarMode}
+            bookmarkTree={bookmarkTree}
+            notebookMenuId={notebookMenuId}
+            pageMenuId={pageMenuId}
+            onExpandNotebooks={() => setNotebooksCollapsed(false)}
+            onCollapseNotebooks={() => setNotebooksCollapsed(true)}
+            onSidebarPanelModeChange={setSidebarPanelMode}
+            onSidebarViewChange={setSidebarView}
+            onNotebookSidebarModeChange={handleNotebookSidebarModeChange}
+            onNotebookCreate={handleNotebookCreate}
+            onPageCreate={handlePageCreate}
+            onSelectNotebook={(notebookId) => {
+              if (selectedNotebookId !== notebookId) {
+                setSelectedNotebookId(notebookId)
+                setLibraryNotebookExpanded(notebookId, true)
+              } else {
+                toggleLibraryNotebookExpanded(notebookId)
+              }
+              setSidebarView('pages')
+              void refreshPages(notebookId)
+            }}
+            onSelectPage={setSelectedPageId}
+            onToggleNotebookMenu={(notebookId) => setNotebookMenuId((value) => (value === notebookId ? null : notebookId))}
+            onTogglePageMenu={(pageId) => setPageMenuId((value) => (value === pageId ? null : pageId))}
+            onNotebookRename={(notebook) => void handleNotebookRename(notebook)}
+            onNotebookArchive={(notebook) => void handleNotebookArchive(notebook)}
+            onNotebookUnarchive={(notebook) => void handleNotebookUnarchive(notebook)}
+            onNotebookDelete={(notebook) => void handleNotebookDelete(notebook)}
+            onPageBookmark={(page) => void handlePageBookmark(page)}
+            onPageMove={openMovePageDialog}
+            onPageDelete={(page) => void handlePageDelete(page)}
+            onBookmarkNotebookToggle={toggleBookmarkNotebookExpanded}
+            isBookmarkNotebookExpanded={isBookmarkNotebookExpanded}
+            isLibraryNotebookExpanded={isLibraryNotebookExpanded}
+            onOpenBookmarkPage={(pageId) => void openBookmarkPage(pageId)}
+            isNotebookArchived={isNotebookArchived}
+            isPageBookmarked={isPageBookmarked}
+            formatPageUpdatedAt={formatPageUpdatedAt}
+            getPagePreview={getPagePreview}
+          />
+
+          <EditorPanel
+            selectedNotebookId={selectedNotebookId}
+            selectedNotebookTitle={selectedNotebook?.title ?? null}
+            selectedPage={selectedPage}
+            selectedPageAttachments={selectedPageAttachments}
+            readOnly={selectedNotebookReadOnly}
+            editorRef={editorRef}
+            editorTitleRef={editorTitleRef}
+            isCurrentPageBookmarked={isCurrentPageBookmarked}
+            lastSavedAt={lastSavedAt}
+            forceSavePending={forceSavePending}
+            pastingImage={pastingImage}
+            formatMenuOpen={formatMenuOpen}
+            textColorPalette={TEXT_COLOR_PALETTE}
+            editorFormatState={editorFormatState}
+            saveStatusLabel={saveStatusLabel}
+            canMoveToPreviousPage={selectedPageIndex > 0}
+            canMoveToNextPage={selectedPageIndex >= 0 && selectedPageIndex < pages.length - 1}
+            onCreateNotebook={() => void handleNotebookCreate()}
+            onCreatePage={() => void handlePageCreate()}
+            onShowBookmarks={showBookmarks}
+            onMovePage={openMovePageDialog}
+            onSelectPreviousPage={selectPreviousPage}
+            onSelectNextPage={selectNextPage}
+            onPageDelete={() => void handlePageDelete()}
+            onPageTitleChange={(value) => void handlePageFieldChange('title', value)}
+            onPageBookmark={() => void handlePageBookmark()}
+            onForceSaveNote={() => void forceSaveNote()}
+            formatLastSavedDisplay={formatLastSavedDisplay}
+            onApplyEditorHistory={applyEditorHistory}
+            onApplyEditorCommand={applyEditorCommand}
+            onToggleFormatMenu={() => setFormatMenuOpen((value) => !value)}
+            onCloseFormatMenu={() => setFormatMenuOpen(false)}
+            onApplyEditorBlockFormat={applyEditorBlockFormat}
+            onApplySelectionFontSizeStep={applySelectionFontSizeStep}
+            onApplyEditorBlockquote={applyEditorBlockquote}
+            onClearEditorFormat={clearEditorFormat}
+            onInsertHorizontalRule={insertHorizontalRule}
+            onCreateOrEditLink={createOrEditLink}
+            onEditorInput={handleEditorInput}
+            onEditorRichTextClick={handleEditorRichTextClick}
+            onProcessImagePaste={(event) => { void processImagePaste(event) }}
+            onOpenAttachmentModal={openAttachmentModal}
+            onCopyAttachmentReference={(attachment) => void copyAttachmentReference(attachment)}
+            onRemoveAttachment={(attachmentId) => void removeAttachment(attachmentId)}
+          />
         </section>
-      ) : null}
-
-      <section className={`layout master-detail-layout${notebooksHidden ? ' sidebar-hidden' : notebooksCollapsed ? ' sidebar-collapsed' : ''}`}>
-        {!notebooksHidden ? (
-          <aside className={`column notebooks master-sidebar${notebooksCollapsed ? ' collapsed' : ''}`}>
-          {notebooksCollapsed ? (
-            <button
-              type="button"
-              className="collapse-toggle collapsed-toggle"
-              onClick={() => setNotebooksCollapsed(false)}
-              aria-label="Expandir libretas"
-              title="Expandir libretas"
-            >
-              <span className="collapsed-label">Libretas</span>
-              <span aria-hidden="true">›</span>
-            </button>
-          ) : (
-            <>
-              <div className="sidebar-panel-switch" role="tablist" aria-label="Vista de la barra lateral">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={sidebarPanelMode === 'library'}
-                  className={`sidebar-panel-switch-btn${sidebarPanelMode === 'library' ? ' is-active' : ''}`}
-                  title="Libretas y paginas"
-                  aria-label="Libretas y paginas"
-                  onClick={() => setSidebarPanelMode('library')}
-                >
-                  <FolderIcon />
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={sidebarPanelMode === 'bookmarks'}
-                  className={`sidebar-panel-switch-btn${sidebarPanelMode === 'bookmarks' ? ' is-active' : ''}`}
-                  title="Favoritos"
-                  aria-label="Favoritos"
-                  onClick={() => setSidebarPanelMode('bookmarks')}
-                >
-                  <BookmarkIcon filled={sidebarPanelMode === 'bookmarks'} />
-                </button>
-              </div>
-              {sidebarPanelMode === 'bookmarks' ? (
-                <div className="notebook-tree bookmarks-tree" aria-label="Favoritos por libreta">
-                  <h2 className="sidebar-section-label">Favoritos</h2>
-                  {bookmarkTree.length === 0 ? (
-                    <p className="notebook-sidebar-empty">No hay paginas con bookmark.</p>
-                  ) : (
-                    bookmarkTree.map(({ notebook, pages }) => {
-                      const expanded = isBookmarkNotebookExpanded(notebook.id)
-                      return (
-                        <div key={notebook.id} className="bookmark-notebook-group">
-                          <div className="notebook-tree-header list-item-shell">
-                            <button
-                              type="button"
-                              className="notebook-tree-folder-btn"
-                              aria-expanded={expanded}
-                              onClick={() => toggleBookmarkNotebookExpanded(notebook.id)}
-                            >
-                              <span className="notebook-tree-chevron" aria-hidden="true">
-                                {expanded ? '▾' : '›'}
-                              </span>
-                              <span className="item-icon notebook-folder-icon" aria-hidden="true">
-                                📁
-                              </span>
-                              <span className="notebook-tree-name">{notebook.title}</span>
-                            </button>
-                          </div>
-                          {expanded ? (
-                            <ul className="pages-tree" aria-label={`Paginas favoritas de ${notebook.title}`}>
-                              {pages.map((page) => (
-                                <li
-                                  key={page.id}
-                                  className={`page-tree-item list-item-shell${page.id === selectedPageId ? ' active' : ''}`}
-                                >
-                                  <button
-                                    type="button"
-                                    className={`page-tree-link${page.id === selectedPageId ? ' active' : ''}`}
-                                    onClick={() => void openBookmarkPage(page.id)}
-                                  >
-                                    <PageTreeTitle page={page} />
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : null}
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              ) : sidebarView === 'pages' && selectedNotebookId ? (
-            <>
-              <button type="button" className="sidebar-back-button" onClick={() => setSidebarView('notebooks')}>
-                <span aria-hidden="true">‹</span> Libretas
-              </button>
-              <div className="notebook-tree">
-                <div className="notebook-tree-header list-item-shell">
-                  <span className="notebook-tree-folder">
-                    <span className="item-icon notebook-folder-icon" aria-hidden="true">📁</span>
-                    <span className="notebook-tree-name">{selectedNotebook?.title ?? 'Libreta'}</span>
-                  </span>
-                  <button type="button" className="tree-hover-action new-page-action" aria-label="Nueva pagina" title="Nueva pagina" onClick={handlePageCreate}>+</button>
-                </div>
-                <ul className="pages-tree" aria-label="Paginas de la libreta">
-                  {pages.map((page) => (
-                    <li key={page.id} className={`page-tree-item list-item-shell${page.id === selectedPageId ? ' active' : ''}`}>
-                      <button type="button" className={`page-tree-link${page.id === selectedPageId ? ' active' : ''}`} onClick={() => setSelectedPageId(page.id)}>
-                        <PageTreeTitle page={page} />
-                      </button>
-                      <button type="button" className="tree-hover-action tree-menu-action" aria-label={`Opciones de ${page.title}`} title="Opciones" onClick={(event) => { event.stopPropagation(); setPageMenuId((value) => (value === page.id ? null : page.id)) }}>···</button>
-                      {pageMenuId === page.id ? (
-                        <div className="context-menu page-context-menu" onClick={(event) => event.stopPropagation()}>
-                          <button type="button" onClick={() => void handlePageBookmark(page)}>Bookmark</button>
-                          <button type="button" onClick={openMovePageDialog}>Mover</button>
-                          <button type="button" onClick={() => void handlePageDelete(page)}>Eliminar</button>
-                        </div>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-                {pages.length === 0 ? <p className="notebook-sidebar-empty">Sin paginas. Usa + para crear una.</p> : null}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="column-title section-title">
-                <div className="column-title-left">
-                  <button
-                    type="button"
-                    className="collapse-toggle"
-                    onClick={() => setNotebooksCollapsed(true)}
-                    aria-label="Colapsar libretas"
-                    title="Colapsar libretas"
-                  >
-                    <span aria-hidden="true">‹</span>
-                  </button>
-                  <h2>Libretas</h2>
-                </div>
-                <button type="button" className="new-notebook-action" aria-label="Nueva libreta" title="Nueva libreta" onClick={handleNotebookCreate}>+</button>
-              </div>
-              <div className="notebook-sidebar-tabs" role="tablist" aria-label="Vista de libretas">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={notebookSidebarMode === 'active'}
-                  className={`notebook-sidebar-tab${notebookSidebarMode === 'active' ? ' is-active' : ''}`}
-                  onClick={() => handleNotebookSidebarModeChange('active')}
-                >
-                  Activas
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={notebookSidebarMode === 'archived'}
-                  className={`notebook-sidebar-tab${notebookSidebarMode === 'archived' ? ' is-active' : ''}`}
-                  onClick={() => handleNotebookSidebarModeChange('archived')}
-                >
-                  Archivadas
-                </button>
-              </div>
-              {sidebarNotebooks.length === 0 ? (
-                <p className="notebook-sidebar-empty">
-                  {notebookSidebarMode === 'archived'
-                    ? 'No hay libretas archivadas.'
-                    : 'No hay libretas activas. Crea una nueva o mira en Archivadas.'}
-                </p>
-              ) : null}
-              {sidebarNotebooks.map((notebook) => (
-                <article key={notebook.id} className={`list-item-shell sidebar-notebook-item${notebook.id === selectedNotebookId ? ' active' : ''}`}>
-                  <button
-                    type="button"
-                    className={`list-item row-item${notebook.id === selectedNotebookId ? ' active' : ''}`}
-                    onClick={() => {
-                      setSelectedNotebookId(notebook.id)
-                      setSidebarView('pages')
-                      void refreshPages(notebook.id)
-                    }}
-                  >
-                    <span className="item-main">
-                      <span className="item-icon" aria-hidden="true">📒</span>
-                      <span>{notebook.title}</span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="item-menu-button tree-hover-action"
-                    aria-label={`Acciones para ${notebook.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setNotebookMenuId((value) => (value === notebook.id ? null : notebook.id))
-                    }}
-                  >
-                    ···
-                  </button>
-                  {notebookMenuId === notebook.id ? (
-                    <div className="context-menu" onClick={(event) => event.stopPropagation()}>
-                      <button type="button" onClick={() => void handleNotebookRename(notebook)}>Renombrar</button>
-                      {isNotebookArchived(notebook) ? (
-                        <button type="button" onClick={() => void handleNotebookUnarchive(notebook)}>Desarchivar</button>
-                      ) : (
-                        <button type="button" onClick={() => void handleNotebookArchive(notebook)}>Archivar</button>
-                      )}
-                      <button type="button" onClick={() => void handleNotebookDelete(notebook)}>Eliminar</button>
-                    </div>
-                  ) : null}
-                </article>
-              ))}
-            </>
-              )}
-            </>
-          )}
-          </aside>
-        ) : null}
-
-        <section className="workspace-panel">
-          <article className="column editor master-detail-main">
-            {!selectedNotebookId ? (
-              <div className="workspace-empty-state" role="status">
-                <NotebookEmptyIcon />
-                <p className="workspace-empty-text">
-                  Selecciona una libreta en la barra lateral, o cambia entre Activas y Archivadas.
-                </p>
-              </div>
-            ) : !selectedPage ? (
-            <div className="workspace-empty-state" role="status">
-              <PageEmptyIcon />
-              <p className="workspace-empty-text">Selecciona una pagina para editar.</p>
-            </div>
-          ) : (
-            <>
-              <div className="editor-header">
-                <input
-                  ref={editorTitleRef}
-                  className="editor-title"
-                  value={selectedPage.title}
-                  onChange={(event) => {
-                    void handlePageFieldChange('title', event.target.value)
-                  }}
-                />
-                <div className="editor-header-actions">
-                  <button
-                    type="button"
-                    className={`editor-icon-button bookmark-icon${isCurrentPageBookmarked ? ' active' : ''}`}
-                    aria-pressed={isCurrentPageBookmarked}
-                    onClick={() => void handlePageBookmark()}
-                    title={isCurrentPageBookmarked ? 'Quitar bookmark' : 'Marcar pagina'}
-                    aria-label={isCurrentPageBookmarked ? 'Quitar bookmark' : 'Marcar pagina'}
-                  >
-                    <BookmarkIcon filled={isCurrentPageBookmarked} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`editor-icon-button save-icon${lastSavedAt !== null ? ' saved' : ''}`}
-                    disabled={forceSavePending || pastingImage}
-                    onClick={() => void forceSaveNote()}
-                    title={
-                      forceSavePending
-                        ? 'Guardando...'
-                        : lastSavedAt !== null
-                          ? `Guardado ${formatLastSavedDisplay(lastSavedAt)}`
-                          : 'Guardar nota (Ctrl/Cmd + S)'
-                    }
-                    aria-label="Guardar nota"
-                  >
-                    <CloudSaveIcon saving={forceSavePending} saved={lastSavedAt !== null} />
-                  </button>
-                </div>
-              </div>
-              <section className="editor-richtext-shell" aria-label="Editor de contenido enriquecido">
-                <div className="editor-format-toolbar editor-format-toolbar-compact">
-                  <div className="editor-history-group" role="group" aria-label="Deshacer y rehacer">
-                    <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorHistory('undo')} title="Deshacer (Ctrl/Cmd+Z)" aria-label="Deshacer"><UndoIcon /></button>
-                    <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorHistory('redo')} title="Rehacer (Ctrl/Cmd+Shift+Z)" aria-label="Rehacer"><RedoIcon /></button>
-                  </div>
-                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('bold')} title="Negrita (Ctrl/Cmd+B)" aria-label="Negrita"><strong>B</strong></button>
-                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('italic')} title="Cursiva (Ctrl/Cmd+I)" aria-label="Cursiva"><em>I</em></button>
-                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('insertUnorderedList')} title="Lista con viñetas" aria-label="Lista con viñetas"><ListBulletIcon /></button>
-                  <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('insertOrderedList')} title="Lista numerada" aria-label="Lista numerada"><ListNumberIcon /></button>
-                  <div className="editor-format-menu-wrap" onClick={(event) => event.stopPropagation()}>
-                    <button
-                      type="button"
-                      className={`toolbar-format-trigger${formatMenuOpen ? ' is-open' : ''}`}
-                      onClick={() => setFormatMenuOpen((value) => !value)}
-                      aria-expanded={formatMenuOpen}
-                      aria-haspopup="menu"
-                      aria-label="Opciones de formato"
-                    >
-                      Formato
-                    </button>
-                    {formatMenuOpen ? (
-                      <div className="editor-format-popover" role="menu" aria-label="Opciones de formato">
-                        <div className="format-popover-row" role="group" aria-label="Tamano del texto">
-                          <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => applySelectionFontSizeStep(-3)} title="Reducir tamano" aria-label="Reducir tamano del texto">A−</button>
-                          <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => applySelectionFontSizeStep(3)} title="Aumentar tamano" aria-label="Aumentar tamano del texto">A+</button>
-                        </div>
-                        <div className="format-popover-row" role="group" aria-label="Estilos secundarios">
-                          <button type="button" className="toolbar-icon-btn" onClick={applyEditorBlockquote} title="Cita" aria-label="Alternar cita"><QuoteIcon /></button>
-                          <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('underline')} title="Subrayado" aria-label="Subrayado"><span className="toolbar-underline">U</span></button>
-                          <button type="button" className="toolbar-icon-btn" onClick={() => applyEditorCommand('strikeThrough')} title="Tachado" aria-label="Tachado"><span className="toolbar-strike">S</span></button>
-                        </div>
-                        <div className="editor-color-palette" role="group" aria-label="Color del texto">
-                          {TEXT_COLOR_PALETTE.map((color) => (
-                            <button key={color} type="button" className="color-swatch" style={{ backgroundColor: color }} onClick={() => applyEditorCommand('foreColor', color)} title={`Color ${color}`} aria-label={`Aplicar color ${color}`} />
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-                <div
-                  ref={editorRef}
-                  className="editor-richtext"
-                  contentEditable
-                  suppressContentEditableWarning
-                  data-placeholder="Escribe tu nota aqui. Puedes pegar imagenes desde portapapeles."
-                  onInput={handleEditorInput}
-                  onClick={handleEditorRichTextClick}
-                  onPaste={(event) => { void processImagePaste(event) }}
-                />
-                <footer className="editor-footer-tip" role="status">
-                  {pastingImage ? 'Procesando screenshot...' : 'Tip: pega screenshot con Ctrl/Cmd + V'}
-                </footer>
-              </section>
-              <section className="attachments">
-                <h3>Imagenes de la pagina</h3>
-                <div className="attachments-content">
-                  {selectedPageAttachments.length === 0 ? (
-                    <p className="attachments-empty">No hay imagenes todavia.</p>
-                  ) : (
-                    <div className="attachment-grid">
-                      {selectedPageAttachments.map((attachment) => (
-                        <figure key={attachment.id}>
-                          <button
-                            type="button"
-                            className="attachment-preview-button"
-                            title="Abrir imagen"
-                            onClick={() => openAttachmentModal(attachment)}
-                          >
-                            <img src={URL.createObjectURL(attachment.blob)} alt={attachment.name ?? 'Adjunto pegado'} />
-                          </button>
-                          <figcaption>
-                            <div className="attachment-meta">
-                              <strong>{attachment.name ?? 'imagen-sin-nombre'}</strong>
-                              <small>{(attachment.sizeBytes / 1024).toFixed(1)} KB</small>
-                            </div>
-                            <div className="attachment-actions">
-                              <button type="button" onClick={() => void copyAttachmentReference(attachment)}>
-                                Copiar ref
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void removeAttachment(attachment.id)
-                                }}
-                              >
-                                Eliminar
-                              </button>
-                            </div>
-                          </figcaption>
-                        </figure>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </section>
-            </>
-          )}
-          </article>
-        </section>
-      </section>
       </main>
-      {renderSecretDialog()}
-      {renderAppDialog()}
-      {renderMovePageDialog()}
-      {imageModalAttachment && imageModalUrl ? (
-        <section className="image-modal-backdrop" role="presentation" onClick={closeAttachmentModal}>
-          <figure className="image-modal" onClick={closeAttachmentModal}>
-            <img src={imageModalUrl} alt={imageModalAttachment.name ?? 'Imagen adjunta'} />
-            <figcaption>
-              {imageModalAttachment.name ?? imageModalAttachment.id} (click para cerrar)
-            </figcaption>
-          </figure>
-        </section>
-      ) : null}
+      <SecretDialog
+        dialog={secretDialog}
+        input={secretInput}
+        visible={secretVisible}
+        onInputChange={setSecretInput}
+        onVisibleChange={setSecretVisible}
+        onClose={closeSecretDialog}
+      />
+      <AppDialog
+        dialog={appDialog}
+        input={appDialogInput}
+        onInputChange={setAppDialogInput}
+        onClose={closeAppDialog}
+      />
+      <MovePageDialog
+        open={movePageDialogOpen}
+        selectedPage={selectedPage}
+        pages={pages}
+        moveBeforePageId={moveBeforePageId}
+        onMoveBeforePageIdChange={setMoveBeforePageId}
+        onCancel={closeMovePageDialog}
+        onConfirm={() => void handleMovePageConfirm()}
+      />
+      <ImageModal attachment={imageModalAttachment} imageUrl={imageModalUrl} onClose={closeAttachmentModal} />
     </>
   )
-}
 
-function NotebookEmptyIcon() {
-  return (
-    <span className="workspace-empty-icon" aria-hidden="true">
-      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25">
-        <path d="M6 4h12a1 1 0 0 1 1 1v14l-4-2.5L11 19V5a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1z" strokeLinejoin="round" />
-        <path d="M11 5h8v12l-3-1.75" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </span>
-  )
-}
-
-function PageEmptyIcon() {
-  return (
-    <span className="workspace-empty-icon" aria-hidden="true">
-      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25">
-        <path d="M7 4h10a1 1 0 0 1 1 1v14l-4-2-4 2V5a1 1 0 0 0 1-1H7a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1z" strokeLinejoin="round" />
-        <path d="M9 8h6M9 12h6M9 16h4" strokeLinecap="round" />
-      </svg>
-    </span>
-  )
-}
-
-function HeaderMenuIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <circle cx="12" cy="6" r="1.5" />
-      <circle cx="12" cy="12" r="1.5" />
-      <circle cx="12" cy="18" r="1.5" />
-    </svg>
-  )
-}
-
-function FolderIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-      <path d="M4 7h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function BookmarkIcon({ filled }: { filled: boolean }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-      <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1z" />
-    </svg>
-  )
-}
-
-function CloudSaveIcon({ saving, saved }: { saving: boolean; saved: boolean }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-      <path d="M7 18h10a4 4 0 0 0 .5-8 5.5 5.5 0 0 0-10.6 1.5A3.5 3.5 0 0 0 7 18z" />
-      {saving ? <circle cx="12" cy="14" r="2" fill="currentColor" stroke="none" opacity="0.7" /> : saved ? <path d="M9.5 14.5l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" /> : null}
-    </svg>
-  )
-}
-
-function UndoIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <path d="M9 14H4V9" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M4 9a8 8 0 1 1 2 5.3" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function RedoIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <path d="M15 14h5V9" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M20 9a8 8 0 1 0-2 5.3" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function ListBulletIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <line x1="9" y1="6" x2="20" y2="6" strokeLinecap="round" />
-      <line x1="9" y1="12" x2="20" y2="12" strokeLinecap="round" />
-      <line x1="9" y1="18" x2="20" y2="18" strokeLinecap="round" />
-      <circle cx="5" cy="6" r="1" fill="currentColor" stroke="none" />
-      <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
-      <circle cx="5" cy="18" r="1" fill="currentColor" stroke="none" />
-    </svg>
-  )
-}
-
-function ListNumberIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <line x1="10" y1="6" x2="20" y2="6" strokeLinecap="round" />
-      <line x1="10" y1="12" x2="20" y2="12" strokeLinecap="round" />
-      <line x1="10" y1="18" x2="20" y2="18" strokeLinecap="round" />
-      <text x="4" y="8" fill="currentColor" stroke="none" fontSize="7" fontFamily="system-ui">1</text>
-      <text x="4" y="14" fill="currentColor" stroke="none" fontSize="7" fontFamily="system-ui">2</text>
-      <text x="4" y="20" fill="currentColor" stroke="none" fontSize="7" fontFamily="system-ui">3</text>
-    </svg>
-  )
-}
-
-function QuoteIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M7 6h4v8H7V6zm0 0C7 4.3 8.3 3 10 3s3 1.3 3 3-1.3 3-3 3H7zm7 0h4v8h-4V6zm0 0c0-1.7 1.3-3 3-3s3 1.3 3 3-1.3 3-3 3h-3z" opacity="0.85" />
-    </svg>
-  )
 }
 
 export default App
-
-function blockquoteContainingRange(root: HTMLElement, range: Range): HTMLElement | null {
-  let n: Node | null = range.commonAncestorContainer
-  if (n.nodeType === Node.TEXT_NODE) {
-    n = n.parentNode
-  }
-  while (n && n !== root) {
-    if (n.nodeName === 'BLOCKQUOTE') {
-      return n as HTMLElement
-    }
-    n = n.parentNode
-  }
-  return null
-}
-
-function unwrapBlockquoteElement(bq: HTMLElement) {
-  const parent = bq.parentNode
-  if (!parent) {
-    return
-  }
-  const fragment = document.createDocumentFragment()
-  while (bq.firstChild) {
-    fragment.appendChild(bq.firstChild)
-  }
-  parent.insertBefore(fragment, bq)
-  parent.removeChild(bq)
-}
-
-/** Marca el inicio del rango (colapsado) para restaurar el cursor tras cambios DOM. */
-function insertCaretMarkerBeforeCollapsed(range: Range): HTMLElement | null {
-  try {
-    const boundary = range.cloneRange()
-    boundary.collapse(true)
-    const marker = document.createElement('span')
-    marker.setAttribute('data-editor-caret-restore', '')
-    boundary.insertNode(marker)
-    return marker
-  } catch {
-    return null
-  }
-}
-
-function restoreCaretAtMarker(marker: HTMLElement, selection: Selection) {
-  const parent = marker.parentNode
-  if (!parent) {
-    marker.remove()
-    return
-  }
-  const idx = Array.prototype.indexOf.call(parent.childNodes, marker)
-  marker.remove()
-  const nextRange = document.createRange()
-  const safeIdx = Math.min(Math.max(0, idx), parent.childNodes.length)
-  nextRange.setStart(parent, safeIdx)
-  nextRange.collapse(true)
-  selection.removeAllRanges()
-  selection.addRange(nextRange)
-}
-
-function linkifyEditorAutoLinks(root: HTMLElement) {
-  linkifyImgRefsInEditor(root)
-  linkifyUrlsInEditor(root)
-}
-
-/**
- * Auto-enlaces reemplazan nodos de texto; sin esto el navegador suele colapsar la seleccion al inicio del editor.
- */
-function linkifyEditorAutoLinksPreservingCaret(root: HTMLElement) {
-  const sel = window.getSelection()
-  let marker: HTMLElement | null = null
-  if (sel && sel.rangeCount > 0 && sel.isCollapsed) {
-    const range = sel.getRangeAt(0)
-    if (root.contains(range.commonAncestorContainer)) {
-      marker = insertCaretMarkerBeforeCollapsed(range)
-    }
-  }
-  try {
-    linkifyEditorAutoLinks(root)
-  } finally {
-    if (marker) {
-      if (sel && marker.isConnected) {
-        restoreCaretAtMarker(marker, sel)
-      } else if (marker.isConnected) {
-        marker.remove()
-      }
-    }
-  }
-}
-
-function normalizeAutoLinkUrl(raw: string): { display: string; href: string; tail: string } {
-  const tailMatch = raw.match(/([.,;:!?)'»\]]+)$/u)
-  const tail = tailMatch?.[1] ?? ''
-  const display = tail ? raw.slice(0, -tail.length) : raw
-  let href = display
-  if (!/^https?:\/\//i.test(href)) {
-    href = `https://${href}`
-  }
-  return { display, href, tail }
-}
-
-/** Wrap plain URLs in non-editable anchors (opens in new tab). Skips text inside any `<a>`. */
-function linkifyUrlsInEditor(root: HTMLElement) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  const textNodes: Text[] = []
-  let node: Node | null
-  while ((node = walker.nextNode())) {
-    if (!(node instanceof Text)) {
-      continue
-    }
-    const text = node.textContent ?? ''
-    if (!/\bhttps?:\/\/|\bwww\./i.test(text)) {
-      continue
-    }
-    let el: HTMLElement | null = node.parentElement
-    let insideAnchor = false
-    while (el && el !== root) {
-      if (el.tagName === 'A') {
-        insideAnchor = true
-        break
-      }
-      el = el.parentElement
-    }
-    if (!insideAnchor) {
-      textNodes.push(node)
-    }
-  }
-
-  for (const textNode of textNodes) {
-    const text = textNode.textContent ?? ''
-    AUTO_LINK_URL_PATTERN.lastIndex = 0
-    if (!AUTO_LINK_URL_PATTERN.test(text)) {
-      continue
-    }
-    AUTO_LINK_URL_PATTERN.lastIndex = 0
-    const frag = document.createDocumentFragment()
-    let lastIndex = 0
-    let match: RegExpExecArray | null
-    while ((match = AUTO_LINK_URL_PATTERN.exec(text)) !== null) {
-      const raw = match[0]
-      const { display, href, tail } = normalizeAutoLinkUrl(raw)
-      if (!display) {
-        lastIndex = match.index + raw.length
-        continue
-      }
-      if (match.index > lastIndex) {
-        frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)))
-      }
-      const anchor = document.createElement('a')
-      anchor.className = EDITOR_AUTO_LINK_CLASS
-      anchor.href = href
-      anchor.target = '_blank'
-      anchor.rel = 'noopener noreferrer'
-      anchor.setAttribute('contenteditable', 'false')
-      anchor.textContent = display
-      frag.appendChild(anchor)
-      if (tail) {
-        frag.appendChild(document.createTextNode(tail))
-      }
-      lastIndex = match.index + raw.length
-    }
-    if (lastIndex < text.length) {
-      frag.appendChild(document.createTextNode(text.slice(lastIndex)))
-    }
-    textNode.parentNode?.replaceChild(frag, textNode)
-  }
-}
-
-/** Wrap plain `[img:token]` text in non-editable links for preview + click to open modal. */
-function linkifyImgRefsInEditor(root: HTMLElement) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  const textNodes: Text[] = []
-  let node: Node | null
-  while ((node = walker.nextNode())) {
-    if (node instanceof Text && node.textContent?.includes('[img:')) {
-      let el: HTMLElement | null = node.parentElement
-      let insideLink = false
-      while (el && el !== root) {
-        if (el.classList.contains('editor-img-ref')) {
-          insideLink = true
-          break
-        }
-        el = el.parentElement
-      }
-      if (!insideLink) {
-        textNodes.push(node)
-      }
-    }
-  }
-
-  for (const textNode of textNodes) {
-    const text = textNode.textContent ?? ''
-    IMG_REF_IN_TEXT_PATTERN.lastIndex = 0
-    if (!IMG_REF_IN_TEXT_PATTERN.test(text)) {
-      continue
-    }
-    IMG_REF_IN_TEXT_PATTERN.lastIndex = 0
-    const frag = document.createDocumentFragment()
-    let lastIndex = 0
-    let match: RegExpExecArray | null
-    while ((match = IMG_REF_IN_TEXT_PATTERN.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)))
-      }
-      const token = match[1]
-      const anchor = document.createElement('a')
-      anchor.className = 'editor-img-ref'
-      anchor.href = '#'
-      anchor.dataset.imgRef = token
-      anchor.setAttribute('contenteditable', 'false')
-      anchor.textContent = `[img:${token}]`
-      frag.appendChild(anchor)
-      lastIndex = match.index + match[0].length
-    }
-    if (lastIndex < text.length) {
-      frag.appendChild(document.createTextNode(text.slice(lastIndex)))
-    }
-    textNode.parentNode?.replaceChild(frag, textNode)
-  }
-}
-
-function insertImagePasteMarker(editor: HTMLDivElement): HTMLElement | null {
-  const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0) {
-    return null
-  }
-  const range = selection.getRangeAt(0)
-  if (!editor.contains(range.commonAncestorContainer)) {
-    return null
-  }
-
-  const marker = document.createElement('span')
-  marker.dataset.imagePasteMarker = crypto.randomUUID()
-  marker.setAttribute('contenteditable', 'false')
-  marker.style.display = 'inline-block'
-  marker.style.width = '0'
-  marker.style.overflow = 'hidden'
-  marker.textContent = '\u200b'
-
-  range.deleteContents()
-  range.insertNode(marker)
-  const nextRange = document.createRange()
-  nextRange.setStartAfter(marker)
-  nextRange.collapse(true)
-  selection?.removeAllRanges()
-  selection?.addRange(nextRange)
-
-  return marker
-}
-
-function insertImageReferenceAtPasteMarker(
-  editor: HTMLDivElement,
-  marker: HTMLElement | null,
-  token: string,
-): string {
-  const anchor = createImageReferenceAnchor(token)
-  const insertAfter = marker?.isConnected ? marker : null
-
-  if (insertAfter) {
-    insertAfter.replaceWith(anchor)
-  } else {
-    insertImageReferenceAtCurrentSelection(editor, anchor)
-  }
-
-  placeCaretAfterNode(anchor)
-  editor.focus()
-
-  return editor.innerHTML
-}
-
-function insertImageReferenceAtCurrentSelection(editor: HTMLDivElement, anchor: HTMLAnchorElement) {
-  const selection = window.getSelection()
-  if (selection && selection.rangeCount > 0) {
-    const range = selection.getRangeAt(0)
-    if (editor.contains(range.commonAncestorContainer)) {
-      range.deleteContents()
-      range.insertNode(anchor)
-      return
-    }
-  }
-  editor.appendChild(anchor)
-}
-
-function createImageReferenceAnchor(token: string): HTMLAnchorElement {
-  const anchor = document.createElement('a')
-  anchor.className = 'editor-img-ref'
-  anchor.href = '#'
-  anchor.dataset.imgRef = token
-  anchor.setAttribute('contenteditable', 'false')
-  anchor.textContent = `[img:${token}]`
-  return anchor
-}
-
-function placeCaretAfterNode(node: Node) {
-  const selection = window.getSelection()
-  if (!selection) {
-    return
-  }
-  const range = document.createRange()
-  range.setStartAfter(node)
-  range.collapse(true)
-  selection.removeAllRanges()
-  selection.addRange(range)
-}
-
-function appendImageReferenceToContent(content: string, token: string): string {
-  const reference = `[img:${escapeHtml(token)}]`
-  return `${content}${reference}`
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
 
 type ProcessedImage = {
   blob: Blob
   width: number
   height: number
 }
-
-type DialogTone = 'neutral' | 'danger'
-
-type BaseAppDialog = {
-  title: string
-  message?: string
-  confirmLabel?: string
-  cancelLabel?: string
-  tone?: DialogTone
-}
-
-type TextDialogConfig = {
-  title: string
-  message?: string
-  confirmLabel: string
-  cancelLabel?: string
-  placeholder?: string
-  initialValue?: string
-  tone?: DialogTone
-}
-
-type ConfirmDialogConfig = {
-  title: string
-  message?: string
-  confirmLabel: string
-  cancelLabel?: string
-  tone?: DialogTone
-}
-
-type AlertDialogConfig = {
-  title: string
-  message?: string
-  confirmLabel?: string
-  tone?: DialogTone
-}
-
-type TextAppDialog = BaseAppDialog & {
-  kind: 'text'
-  confirmLabel: string
-  placeholder?: string
-}
-
-type ConfirmAppDialog = BaseAppDialog & {
-  kind: 'confirm'
-  confirmLabel: string
-}
-
-type AlertAppDialog = BaseAppDialog & {
-  kind: 'alert'
-}
-
-type AppDialogState = TextAppDialog | ConfirmAppDialog | AlertAppDialog
 
 async function downscaleImage(file: File): Promise<ProcessedImage> {
   const dataUrl = await readAsDataUrl(file)
