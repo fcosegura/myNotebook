@@ -2,6 +2,7 @@ import type { Attachment } from '../storage/db'
 
 type AttachmentsPanelProps = {
   attachments: Attachment[]
+  readOnly: boolean
   onOpenAttachmentModal: (attachment: Attachment) => void
   onCopyAttachmentReference: (attachment: Attachment) => void
   onRemoveAttachment: (attachmentId: string) => void
@@ -9,6 +10,7 @@ type AttachmentsPanelProps = {
 
 export function AttachmentsPanel({
   attachments,
+  readOnly,
   onOpenAttachmentModal,
   onCopyAttachmentReference,
   onRemoveAttachment,
@@ -18,7 +20,11 @@ export function AttachmentsPanel({
       <h3>Imágenes de la página</h3>
       <div className="attachments-content">
         {attachments.length === 0 ? (
-          <p className="attachments-empty">Pega una captura con Ctrl/Cmd + V y aparecerá aquí como recurso visual.</p>
+          <p className="attachments-empty">
+            {readOnly
+              ? 'Esta página archivada no tiene imágenes.'
+              : 'Pega una captura con Ctrl/Cmd + V y aparecerá aquí como recurso visual.'}
+          </p>
         ) : (
           <div className="attachment-grid">
             {attachments.map((attachment) => (
@@ -42,6 +48,8 @@ export function AttachmentsPanel({
                     </button>
                     <button
                       type="button"
+                      disabled={readOnly}
+                      title={readOnly ? 'Archivo de solo lectura' : 'Eliminar imagen'}
                       onClick={() => {
                         onRemoveAttachment(attachment.id)
                       }}

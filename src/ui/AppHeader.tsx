@@ -8,6 +8,7 @@ type AppHeaderProps = {
   lastSavedAt: number | null
   notebooksHidden: boolean
   canCreatePage: boolean
+  canCreateNotebook: boolean
   logoutPending: boolean
   forceSavePending: boolean
   pastingImage: boolean
@@ -36,6 +37,7 @@ export function AppHeader({
   lastSavedAt,
   notebooksHidden,
   canCreatePage,
+  canCreateNotebook,
   logoutPending,
   forceSavePending,
   pastingImage,
@@ -143,9 +145,9 @@ export function AppHeader({
               <strong>Crear página</strong>
               <span>Abre una nota nueva y lista para escribir.</span>
             </button>
-            <button type="button" onClick={onCreateNotebook}>
+            <button type="button" disabled={!canCreateNotebook} onClick={onCreateNotebook}>
               <strong>Crear libreta</strong>
-              <span>Organiza un nuevo espacio de notas.</span>
+              <span>{canCreateNotebook ? 'Organiza un nuevo espacio de notas.' : 'Cambia a Activas para crear libretas.'}</span>
             </button>
             <button type="button" onClick={onShowBookmarks}>
               <strong>Ver favoritos</strong>

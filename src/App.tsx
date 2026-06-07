@@ -251,6 +251,8 @@ function App() {
     [notebooks, selectedNotebookId],
   )
 
+  const selectedNotebookReadOnly = selectedNotebook ? isNotebookArchived(selectedNotebook) : false
+
   const sidebarNotebooks = useMemo(
     () =>
       notebooks.filter((notebook) =>
@@ -420,6 +422,11 @@ function App() {
   }
 
   async function handleNotebookCreate() {
+    if (notebookSidebarModeRef.current === 'archived') {
+      setBackupStatus('Las libretas archivadas son de solo lectura. Cambia a Activas para crear una libreta.')
+      setBackupStatusType('info')
+      return
+    }
     const notebookName = await requestTextDialog({
       title: 'Nueva libreta',
       message: 'Elige un nombre para la libreta.',
@@ -438,7 +445,11 @@ function App() {
   }
 
   async function handlePageCreate() {
-    if (!selectedNotebookId) {
+    if (!selectedNotebookId || selectedNotebookReadOnly) {
+      if (selectedNotebookReadOnly) {
+        setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+        setBackupStatusType('info')
+      }
       return
     }
     const page = await createPage(selectedNotebookId, 'Nueva página')
@@ -465,6 +476,13 @@ function App() {
   async function handlePageBookmark(page?: Page) {
     const current = page ?? selectedPage
     if (!current) {
+      return
+    }
+    const notebook = notebooks.find((entry) => entry.id === current.notebookId)
+    if (notebook && isNotebookArchived(notebook)) {
+      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+      setBackupStatusType('info')
+      setPageMenuId(null)
       return
     }
     const pageId = current.id
@@ -554,6 +572,13 @@ function App() {
     if (!current) {
       return
     }
+    const notebook = notebooks.find((entry) => entry.id === current.notebookId)
+    if (notebook && isNotebookArchived(notebook)) {
+      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+      setBackupStatusType('info')
+      setPageMenuId(null)
+      return
+    }
     const confirmed = await requestConfirmDialog({
       title: 'Eliminar pagina',
       message: `Se eliminara la pagina "${current.title}" con sus adjuntos.`,
@@ -573,14 +598,18 @@ function App() {
   }
 
   function openMovePageDialog() {
-    if (!selectedPage) {
+    if (!selectedPage || selectedNotebookReadOnly) {
+      if (selectedNotebookReadOnly) {
+        setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+        setBackupStatusType('info')
+      }
       return
     }
     openMovePageDialogState()
   }
 
   async function handleMovePageConfirm() {
-    if (!selectedNotebookId || !selectedPage) {
+    if (!selectedNotebookId || !selectedPage || selectedNotebookReadOnly) {
       return
     }
     await movePageBefore(selectedNotebookId, selectedPage.id, moveBeforePageId || null)
@@ -590,6 +619,9 @@ function App() {
   }
 
   async function handlePageFieldChange<K extends keyof Page>(key: K, value: Page[K]) {
+    if (selectedNotebookReadOnly) {
+      return
+    }
     const pageId = selectedPage?.id
     if (!pageId) {
       return
@@ -608,6 +640,11 @@ function App() {
   }
 
   async function forceSaveNote() {
+    if (selectedNotebookReadOnly) {
+      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+      setBackupStatusType('info')
+      return
+    }
     if (!selectedPage || !editorRef.current) {
       setBackupStatus('No hay pagina seleccionada para guardar.')
       setBackupStatusType('error')
@@ -669,6 +706,9 @@ function App() {
       if (!event.ctrlKey && !event.metaKey) {
         return
       }
+      if (selectedNotebookReadOnly) {
+        return
+      }
       if (event.key.toLowerCase() !== 's') {
         return
       }
@@ -683,7 +723,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [unlocked])
+  }, [unlocked, selectedNotebookReadOnly])
 
   useEffect(() => {
     if (!unlocked) {
@@ -733,7 +773,7 @@ function App() {
       document.removeEventListener('selectionchange', onSelectionChange)
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [unlocked, selectedPageId])
+  }, [unlocked, selectedPageId, selectedNotebookReadOnly])
 
   async function handleSetupPin() {
     if (!user) {
@@ -924,7 +964,12 @@ function App() {
   }
 
   async function processImagePaste(event: ClipboardEvent<HTMLDivElement>) {
-    if (!selectedPageId) {
+    if (!selectedPageId || selectedNotebookReadOnly) {
+      if (selectedNotebookReadOnly) {
+        event.preventDefault()
+        setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+        setBackupStatusType('info')
+      }
       return
     }
     const item = Array.from(event.clipboardData.items).find((entry) => entry.type.startsWith('image/'))
@@ -1055,7 +1100,7 @@ function App() {
       | 'insertOrderedList',
     value?: string,
   ) {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     editorRef.current.focus()
@@ -1067,7 +1112,7 @@ function App() {
   applyEditorCommandRef.current = applyEditorCommand
 
   function applyEditorHistory(action: 'undo' | 'redo') {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     editorRef.current.focus()
@@ -1077,7 +1122,7 @@ function App() {
   }
 
   function applyEditorBlockFormat(format: EditorBlockFormat) {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     const tag = format === 'P' ? 'p' : format.toLowerCase()
@@ -1088,7 +1133,7 @@ function App() {
   }
 
   function applyEditorBlockquote() {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -1114,7 +1159,7 @@ function App() {
   }
 
   function clearEditorFormat() {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -1125,7 +1170,7 @@ function App() {
   }
 
   function insertHorizontalRule() {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -1136,7 +1181,7 @@ function App() {
   }
 
   function createOrEditLink() {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -1192,7 +1237,7 @@ function App() {
 
   /** Mueve el tamano del texto seleccionado N escalones en la escala (p. ej. 3 con A+ / A−). */
   function applySelectionFontSizeStep(stepDelta: number) {
-    if (!selectedPage || !editorRef.current) {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -1371,6 +1416,11 @@ function App() {
 
 
   async function removeAttachment(attachmentId: string) {
+    if (selectedNotebookReadOnly) {
+      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+      setBackupStatusType('info')
+      return
+    }
     await deleteAttachment(attachmentId)
     if (selectedNotebookId) {
       await refreshPages(selectedNotebookId)
@@ -1527,7 +1577,8 @@ function App() {
           searchTerm={searchTerm}
           lastSavedAt={lastSavedAt}
           notebooksHidden={notebooksHidden}
-          canCreatePage={selectedNotebookId !== null}
+          canCreatePage={selectedNotebookId !== null && !selectedNotebookReadOnly}
+          canCreateNotebook={notebookSidebarMode !== 'archived'}
           logoutPending={logoutPending}
           forceSavePending={forceSavePending}
           pastingImage={pastingImage}
@@ -1564,6 +1615,7 @@ function App() {
             selectedNotebookId={selectedNotebookId}
             selectedPageId={selectedPageId}
             selectedNotebook={selectedNotebook}
+            selectedNotebookReadOnly={selectedNotebookReadOnly}
             pages={pages}
             sidebarNotebooks={sidebarNotebooks}
             notebookSidebarMode={notebookSidebarMode}
@@ -1606,6 +1658,7 @@ function App() {
             selectedNotebookTitle={selectedNotebook?.title ?? null}
             selectedPage={selectedPage}
             selectedPageAttachments={selectedPageAttachments}
+            readOnly={selectedNotebookReadOnly}
             editorRef={editorRef}
             editorTitleRef={editorTitleRef}
             isCurrentPageBookmarked={isCurrentPageBookmarked}

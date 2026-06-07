@@ -392,6 +392,14 @@
   font-weight: 650;
 }
 
+.read-only-note {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-weight: 700;
+}
+
 .context-menu {
   position: absolute;
   z-index: 25;

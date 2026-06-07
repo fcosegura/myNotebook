@@ -15,6 +15,7 @@ type SidebarProps = {
   selectedNotebookId: string | null
   selectedPageId: string | null
   selectedNotebook: Notebook | null
+  selectedNotebookReadOnly: boolean
   pages: Page[]
   sidebarNotebooks: Notebook[]
   notebookSidebarMode: 'active' | 'archived'
@@ -55,6 +56,7 @@ export function Sidebar(props: SidebarProps) {
     sidebarPanelMode,
     selectedNotebookId,
     selectedPageId,
+    selectedNotebookReadOnly,
     pages,
     sidebarNotebooks,
     notebookSidebarMode,
@@ -210,13 +212,22 @@ export function Sidebar(props: SidebarProps) {
                     type="button"
                     className="new-page-action"
                     aria-label="Nueva página"
-                    title={selectedNotebookId ? 'Nueva página' : 'Selecciona una libreta'}
-                    disabled={!selectedNotebookId}
+                    title={selectedNotebookReadOnly ? 'Las libretas archivadas son de solo lectura' : selectedNotebookId ? 'Nueva página' : 'Selecciona una libreta'}
+                    disabled={!selectedNotebookId || selectedNotebookReadOnly}
                     onClick={onPageCreate}
                   >
                     + Página
                   </button>
-                  <button type="button" className="new-notebook-action" aria-label="Nueva libreta" title="Nueva libreta" onClick={onNotebookCreate}>+</button>
+                  <button
+                    type="button"
+                    className="new-notebook-action"
+                    aria-label="Nueva libreta"
+                    title={notebookSidebarMode === 'archived' ? 'Cambia a Activas para crear una libreta' : 'Nueva libreta'}
+                    disabled={notebookSidebarMode === 'archived'}
+                    onClick={onNotebookCreate}
+                  >
+                    +
+                  </button>
                 </div>
               </div>
               <div className="notebook-sidebar-tabs" role="tablist" aria-label="Vista de libretas">
@@ -303,20 +314,23 @@ export function Sidebar(props: SidebarProps) {
                             <button type="button" className="tree-hover-action tree-menu-action" aria-label={`Opciones de ${page.title}`} title="Opciones" onClick={(event) => stopAndRun(event, () => onTogglePageMenu(page.id))}>···</button>
                             {pageMenuId === page.id ? (
                               <div className="context-menu page-context-menu" onClick={(event) => event.stopPropagation()}>
-                                <button type="button" onClick={() => onPageBookmark(page)}>
+                                <button type="button" disabled={selectedNotebookReadOnly} onClick={() => onPageBookmark(page)}>
                                   {isPageBookmarked(page) ? 'Quitar favorito' : 'Marcar favorito'}
                                 </button>
-                                <button type="button" onClick={onPageMove}>Mover</button>
-                                <button type="button" onClick={() => onPageDelete(page)}>Eliminar</button>
+                                <button type="button" disabled={selectedNotebookReadOnly} onClick={onPageMove}>Mover</button>
+                                <button type="button" disabled={selectedNotebookReadOnly} onClick={() => onPageDelete(page)}>Eliminar</button>
                               </div>
                             ) : null}
                           </li>
                         ))}
                       </ul>
+                      {selectedNotebookReadOnly ? (
+                        <p className="notebook-sidebar-empty read-only-note">Archivo de solo lectura.</p>
+                      ) : null}
                       {pages.length === 0 ? (
                         <div className="notebook-sidebar-empty sidebar-empty-card">
                           <p>Esta libreta está esperando su primera página.</p>
-                          <button type="button" onClick={onPageCreate}>Crear primera página</button>
+                          <button type="button" disabled={selectedNotebookReadOnly} onClick={onPageCreate}>Crear primera página</button>
                         </div>
                       ) : null}
                     </>
