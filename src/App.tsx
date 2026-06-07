@@ -53,6 +53,7 @@ import { useAppDialogs } from './ui/hooks/useAppDialogs'
 import { useImageModal } from './ui/hooks/useImageModal'
 import { useInactivityLock } from './ui/hooks/useInactivityLock'
 import { useSidebarState } from './ui/hooks/useSidebarState'
+import { isNotebookArchived, formatLastSavedDisplay } from './utils/helpers'
 import {
   appendImageReferenceToContent,
   blockquoteContainingRange,
@@ -95,19 +96,8 @@ const DEFAULT_EDITOR_FORMAT_STATE: EditorFormatState = {
   block: 'P',
 }
 
-function isNotebookArchived(notebook: Notebook): boolean {
-  return notebook.archived === true
-}
-
 function isPageBookmarked(page: { tags: string[] }): boolean {
   return page.tags.includes(BOOKMARK_TAG)
-}
-
-function formatLastSavedDisplay(ts: number): string {
-  return new Intl.DateTimeFormat('es', {
-    dateStyle: 'short',
-    timeStyle: 'medium',
-  }).format(new Date(ts))
 }
 
 function App() {
