@@ -72,6 +72,28 @@ const TEXT_COLOR_PALETTE = [
 ]
 const FONT_SIZE_STEPS_PX = [12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32] as const
 const MAX_PIN_DIGITS = 32
+type EditorBlockFormat = 'P' | 'H1' | 'H2' | 'H3'
+type EditorFormatState = {
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  strikeThrough: boolean
+  unorderedList: boolean
+  orderedList: boolean
+  blockquote: boolean
+  block: EditorBlockFormat
+}
+
+const DEFAULT_EDITOR_FORMAT_STATE: EditorFormatState = {
+  bold: false,
+  italic: false,
+  underline: false,
+  strikeThrough: false,
+  unorderedList: false,
+  orderedList: false,
+  blockquote: false,
+  block: 'P',
+}
 
 function isNotebookArchived(notebook: Notebook): boolean {
   return notebook.archived === true
@@ -115,6 +137,7 @@ function App() {
   const [actionsOpen, setActionsOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
   const [formatMenuOpen, setFormatMenuOpen] = useState(false)
+  const [editorFormatState, setEditorFormatState] = useState<EditorFormatState>(DEFAULT_EDITOR_FORMAT_STATE)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const {
     secretDialog,
@@ -166,6 +189,18 @@ function App() {
   const editorRef = useRef<HTMLDivElement | null>(null)
   const editorTitleRef = useRef<HTMLInputElement | null>(null)
   const forceSaveNoteRef = useRef<() => Promise<void>>(async () => {})
+  const refreshEditorFormatStateRef = useRef<() => void>(() => {})
+  const applyEditorCommandRef = useRef<(
+    command:
+      | 'bold'
+      | 'italic'
+      | 'underline'
+      | 'strikeThrough'
+      | 'foreColor'
+      | 'insertUnorderedList'
+      | 'insertOrderedList',
+    value?: string,
+  ) => void>(() => {})
   const lastSyncedEditorHtmlRef = useRef<string>('')
   /** Evita pisar el DOM del editor con `selectedPage` desactualizado al re-renderizar la misma pagina. */
   const editorBoundPageIdRef = useRef<string | null>(null)
@@ -650,6 +685,56 @@ function App() {
     }
   }, [unlocked])
 
+  useEffect(() => {
+    if (!unlocked) {
+      return
+    }
+    const onSelectionChange = () => {
+      refreshEditorFormatStateRef.current()
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      const editor = editorRef.current
+      const target = event.target as Node | null
+      if (!editor || !target || !editor.contains(target)) {
+        return
+      }
+      if (!event.ctrlKey && !event.metaKey) {
+        return
+      }
+      const key = event.key.toLowerCase()
+      if (key === 'b') {
+        event.preventDefault()
+        applyEditorCommandRef.current('bold')
+        return
+      }
+      if (key === 'i') {
+        event.preventDefault()
+        applyEditorCommandRef.current('italic')
+        return
+      }
+      if (key === 'u') {
+        event.preventDefault()
+        applyEditorCommandRef.current('underline')
+        return
+      }
+      if (event.shiftKey && event.key === '7') {
+        event.preventDefault()
+        applyEditorCommandRef.current('insertOrderedList')
+        return
+      }
+      if (event.shiftKey && event.key === '8') {
+        event.preventDefault()
+        applyEditorCommandRef.current('insertUnorderedList')
+      }
+    }
+    document.addEventListener('selectionchange', onSelectionChange)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('selectionchange', onSelectionChange)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [unlocked, selectedPageId])
+
   async function handleSetupPin() {
     if (!user) {
       return
@@ -907,7 +992,57 @@ function App() {
     }
     lastSyncedEditorHtmlRef.current = html
     void handlePageFieldChange('content', html)
+    refreshEditorFormatStateSoon()
   }
+
+  function editorSelectionRange(): Range | null {
+    const editor = editorRef.current
+    const selection = window.getSelection()
+    if (!editor || !selection || selection.rangeCount === 0) {
+      return null
+    }
+    const range = selection.getRangeAt(0)
+    return editor.contains(range.commonAncestorContainer) ? range : null
+  }
+
+  function blockFormatForRange(range: Range, editor: HTMLElement): EditorBlockFormat {
+    let el: HTMLElement | null =
+      range.startContainer.nodeType === Node.TEXT_NODE
+        ? range.startContainer.parentElement
+        : (range.startContainer as HTMLElement)
+    while (el && el !== editor) {
+      if (el.tagName === 'H1' || el.tagName === 'H2' || el.tagName === 'H3') {
+        return el.tagName as EditorBlockFormat
+      }
+      el = el.parentElement
+    }
+    return 'P'
+  }
+
+  function refreshEditorFormatState() {
+    const editor = editorRef.current
+    const range = editorSelectionRange()
+    if (!editor || !range) {
+      setEditorFormatState(DEFAULT_EDITOR_FORMAT_STATE)
+      return
+    }
+    setEditorFormatState({
+      bold: document.queryCommandState('bold'),
+      italic: document.queryCommandState('italic'),
+      underline: document.queryCommandState('underline'),
+      strikeThrough: document.queryCommandState('strikeThrough'),
+      unorderedList: document.queryCommandState('insertUnorderedList'),
+      orderedList: document.queryCommandState('insertOrderedList'),
+      blockquote: blockquoteContainingRange(editor, range) !== null,
+      block: blockFormatForRange(range, editor),
+    })
+  }
+
+  function refreshEditorFormatStateSoon() {
+    window.setTimeout(refreshEditorFormatState, 0)
+  }
+
+  refreshEditorFormatStateRef.current = refreshEditorFormatState
 
   function applyEditorCommand(
     command:
@@ -926,7 +1061,10 @@ function App() {
     editorRef.current.focus()
     document.execCommand(command, false, value)
     flushEditorContentFromDom(editorRef.current)
+    refreshEditorFormatStateSoon()
   }
+
+  applyEditorCommandRef.current = applyEditorCommand
 
   function applyEditorHistory(action: 'undo' | 'redo') {
     if (!selectedPage || !editorRef.current) {
@@ -935,6 +1073,18 @@ function App() {
     editorRef.current.focus()
     document.execCommand(action, false)
     flushEditorContentFromDom(editorRef.current)
+    refreshEditorFormatStateSoon()
+  }
+
+  function applyEditorBlockFormat(format: EditorBlockFormat) {
+    if (!selectedPage || !editorRef.current) {
+      return
+    }
+    const tag = format === 'P' ? 'p' : format.toLowerCase()
+    editorRef.current.focus()
+    document.execCommand('formatBlock', false, tag)
+    flushEditorContentFromDom(editorRef.current)
+    refreshEditorFormatStateSoon()
   }
 
   function applyEditorBlockquote() {
@@ -954,11 +1104,70 @@ function App() {
         }
         editor.focus()
         flushEditorContentFromDom(editor)
+        refreshEditorFormatStateSoon()
         return
       }
     }
     document.execCommand('formatBlock', false, 'blockquote')
     flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
+  }
+
+  function clearEditorFormat() {
+    if (!selectedPage || !editorRef.current) {
+      return
+    }
+    const editor = editorRef.current
+    editor.focus()
+    document.execCommand('removeFormat', false)
+    flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
+  }
+
+  function insertHorizontalRule() {
+    if (!selectedPage || !editorRef.current) {
+      return
+    }
+    const editor = editorRef.current
+    editor.focus()
+    document.execCommand('insertHorizontalRule', false)
+    flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
+  }
+
+  function createOrEditLink() {
+    if (!selectedPage || !editorRef.current) {
+      return
+    }
+    const editor = editorRef.current
+    const selection = window.getSelection()
+    const range = editorSelectionRange()
+    if (!selection || !range) {
+      return
+    }
+    const existingLink = (
+      range.startContainer.nodeType === Node.TEXT_NODE
+        ? range.startContainer.parentElement
+        : (range.startContainer as HTMLElement)
+    )?.closest('a')
+    const currentHref = existingLink instanceof HTMLAnchorElement ? existingLink.href : ''
+    const rawUrl = window.prompt('URL del enlace', currentHref)
+    if (rawUrl === null) {
+      editor.focus()
+      return
+    }
+    const url = rawUrl.trim()
+    editor.focus()
+    selection.removeAllRanges()
+    selection.addRange(range)
+    if (!url) {
+      document.execCommand('unlink', false)
+    } else {
+      const href = /^https?:\/\//i.test(url) ? url : `https://${url}`
+      document.execCommand('createLink', false, href)
+    }
+    flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
   }
 
   function getApproxFontSizePxFromRange(range: Range, editorRoot: HTMLElement): number {
@@ -1024,6 +1233,7 @@ function App() {
     selection.addRange(nextRange)
 
     flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
   }
 
   function handleEditorRichTextClick(event: MouseEvent<HTMLDivElement>) {
@@ -1404,6 +1614,7 @@ function App() {
             pastingImage={pastingImage}
             formatMenuOpen={formatMenuOpen}
             textColorPalette={TEXT_COLOR_PALETTE}
+            editorFormatState={editorFormatState}
             saveStatusLabel={saveStatusLabel}
             canMoveToPreviousPage={selectedPageIndex > 0}
             canMoveToNextPage={selectedPageIndex >= 0 && selectedPageIndex < pages.length - 1}
@@ -1421,8 +1632,13 @@ function App() {
             onApplyEditorHistory={applyEditorHistory}
             onApplyEditorCommand={applyEditorCommand}
             onToggleFormatMenu={() => setFormatMenuOpen((value) => !value)}
+            onCloseFormatMenu={() => setFormatMenuOpen(false)}
+            onApplyEditorBlockFormat={applyEditorBlockFormat}
             onApplySelectionFontSizeStep={applySelectionFontSizeStep}
             onApplyEditorBlockquote={applyEditorBlockquote}
+            onClearEditorFormat={clearEditorFormat}
+            onInsertHorizontalRule={insertHorizontalRule}
+            onCreateOrEditLink={createOrEditLink}
             onEditorInput={handleEditorInput}
             onEditorRichTextClick={handleEditorRichTextClick}
             onProcessImagePaste={(event) => { void processImagePaste(event) }}

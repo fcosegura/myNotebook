@@ -4,6 +4,17 @@ import { CloudSaveIcon, ListBulletIcon, ListNumberIcon, NotebookEmptyIcon, PageE
 import { AttachmentsPanel } from './AttachmentsPanel'
 
 type EditorCommand = 'bold' | 'italic' | 'insertUnorderedList' | 'insertOrderedList' | 'underline' | 'strikeThrough' | 'foreColor'
+type EditorBlockFormat = 'P' | 'H1' | 'H2' | 'H3'
+type EditorFormatState = {
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  strikeThrough: boolean
+  unorderedList: boolean
+  orderedList: boolean
+  blockquote: boolean
+  block: EditorBlockFormat
+}
 
 type EditorPanelProps = {
   selectedNotebookId: string | null
@@ -18,6 +29,7 @@ type EditorPanelProps = {
   pastingImage: boolean
   formatMenuOpen: boolean
   textColorPalette: string[]
+  editorFormatState: EditorFormatState
   saveStatusLabel: string
   canMoveToPreviousPage: boolean
   canMoveToNextPage: boolean
@@ -35,8 +47,13 @@ type EditorPanelProps = {
   onApplyEditorHistory: (action: 'undo' | 'redo') => void
   onApplyEditorCommand: (command: EditorCommand, value?: string) => void
   onToggleFormatMenu: () => void
+  onCloseFormatMenu: () => void
+  onApplyEditorBlockFormat: (format: EditorBlockFormat) => void
   onApplySelectionFontSizeStep: (stepDelta: number) => void
   onApplyEditorBlockquote: () => void
+  onClearEditorFormat: () => void
+  onInsertHorizontalRule: () => void
+  onCreateOrEditLink: () => void
   onEditorInput: (event: FormEvent<HTMLDivElement>) => void
   onEditorRichTextClick: (event: MouseEvent<HTMLDivElement>) => void
   onProcessImagePaste: (event: ClipboardEvent<HTMLDivElement>) => void
@@ -58,6 +75,7 @@ export function EditorPanel({
   pastingImage,
   formatMenuOpen,
   textColorPalette,
+  editorFormatState,
   saveStatusLabel,
   canMoveToPreviousPage,
   canMoveToNextPage,
@@ -75,8 +93,13 @@ export function EditorPanel({
   onApplyEditorHistory,
   onApplyEditorCommand,
   onToggleFormatMenu,
+  onCloseFormatMenu,
+  onApplyEditorBlockFormat,
   onApplySelectionFontSizeStep,
   onApplyEditorBlockquote,
+  onClearEditorFormat,
+  onInsertHorizontalRule,
+  onCreateOrEditLink,
   onEditorInput,
   onEditorRichTextClick,
   onProcessImagePaste,
@@ -155,16 +178,31 @@ export function EditorPanel({
               </div>
             </div>
             <section className="editor-richtext-shell" aria-label="Editor de contenido enriquecido">
-              <div className="editor-format-toolbar editor-format-toolbar-compact">
-                <div className="editor-history-group" role="group" aria-label="Deshacer y rehacer">
+              <div
+                className="editor-format-toolbar editor-format-toolbar-compact"
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                }}
+              >
+                <div className="toolbar-group editor-history-group" role="group" aria-label="Deshacer y rehacer">
                   <button type="button" className="toolbar-icon-btn" onClick={() => onApplyEditorHistory('undo')} title="Deshacer (Ctrl/Cmd+Z)" aria-label="Deshacer"><UndoIcon /></button>
                   <button type="button" className="toolbar-icon-btn" onClick={() => onApplyEditorHistory('redo')} title="Rehacer (Ctrl/Cmd+Shift+Z)" aria-label="Rehacer"><RedoIcon /></button>
                 </div>
-                <button type="button" className="toolbar-icon-btn" onClick={() => onApplyEditorCommand('bold')} title="Negrita (Ctrl/Cmd+B)" aria-label="Negrita"><strong>B</strong></button>
-                <button type="button" className="toolbar-icon-btn" onClick={() => onApplyEditorCommand('italic')} title="Cursiva (Ctrl/Cmd+I)" aria-label="Cursiva"><em>I</em></button>
-                <button type="button" className="toolbar-icon-btn" onClick={() => onApplyEditorCommand('insertUnorderedList')} title="Lista con viñetas" aria-label="Lista con viñetas"><ListBulletIcon /></button>
-                <button type="button" className="toolbar-icon-btn" onClick={() => onApplyEditorCommand('insertOrderedList')} title="Lista numerada" aria-label="Lista numerada"><ListNumberIcon /></button>
-                <div className="editor-format-menu-wrap" onClick={(event) => event.stopPropagation()}>
+                <div className="toolbar-group" role="group" aria-label="Formato básico">
+                  <button type="button" className={`toolbar-icon-btn${editorFormatState.bold ? ' is-active' : ''}`} aria-pressed={editorFormatState.bold} onClick={() => onApplyEditorCommand('bold')} title="Negrita (Ctrl/Cmd+B)" aria-label="Negrita"><strong>B</strong></button>
+                  <button type="button" className={`toolbar-icon-btn${editorFormatState.italic ? ' is-active' : ''}`} aria-pressed={editorFormatState.italic} onClick={() => onApplyEditorCommand('italic')} title="Cursiva (Ctrl/Cmd+I)" aria-label="Cursiva"><em>I</em></button>
+                  <button type="button" className={`toolbar-icon-btn${editorFormatState.unorderedList ? ' is-active' : ''}`} aria-pressed={editorFormatState.unorderedList} onClick={() => onApplyEditorCommand('insertUnorderedList')} title="Lista con viñetas (Ctrl/Cmd+Shift+8)" aria-label="Lista con viñetas"><ListBulletIcon /></button>
+                  <button type="button" className={`toolbar-icon-btn${editorFormatState.orderedList ? ' is-active' : ''}`} aria-pressed={editorFormatState.orderedList} onClick={() => onApplyEditorCommand('insertOrderedList')} title="Lista numerada (Ctrl/Cmd+Shift+7)" aria-label="Lista numerada"><ListNumberIcon /></button>
+                </div>
+                <div
+                  className="editor-format-menu-wrap"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      onCloseFormatMenu()
+                    }
+                  }}
+                >
                   <button
                     type="button"
                     className={`toolbar-format-trigger${formatMenuOpen ? ' is-open' : ''}`}
@@ -173,23 +211,47 @@ export function EditorPanel({
                     aria-haspopup="menu"
                     aria-label="Opciones de formato"
                   >
-                    Formato
+                    Más <span aria-hidden="true">⌄</span>
                   </button>
                   {formatMenuOpen ? (
                     <div className="editor-format-popover" role="menu" aria-label="Opciones de formato">
-                      <div className="format-popover-row" role="group" aria-label="Tamaño del texto">
-                        <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => onApplySelectionFontSizeStep(-3)} title="Reducir tamaño" aria-label="Reducir tamaño del texto">A−</button>
-                        <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => onApplySelectionFontSizeStep(3)} title="Aumentar tamaño" aria-label="Aumentar tamaño del texto">A+</button>
-                      </div>
-                      <div className="format-popover-row" role="group" aria-label="Estilos secundarios">
-                        <button type="button" className="toolbar-icon-btn" onClick={onApplyEditorBlockquote} title="Cita" aria-label="Alternar cita"><QuoteIcon /></button>
-                        <button type="button" className="toolbar-icon-btn" onClick={() => onApplyEditorCommand('underline')} title="Subrayado" aria-label="Subrayado"><span className="toolbar-underline">U</span></button>
-                        <button type="button" className="toolbar-icon-btn" onClick={() => onApplyEditorCommand('strikeThrough')} title="Tachado" aria-label="Tachado"><span className="toolbar-strike">S</span></button>
-                      </div>
-                      <div className="editor-color-palette" role="group" aria-label="Color del texto">
-                        {textColorPalette.map((color) => (
-                          <button key={color} type="button" className="color-swatch" style={{ backgroundColor: color }} onClick={() => onApplyEditorCommand('foreColor', color)} title={`Color ${color}`} aria-label={`Aplicar color ${color}`} />
-                        ))}
+                      <section className="format-popover-section" aria-label="Estructura de texto">
+                        <p className="format-popover-label">Estructura</p>
+                        <div className="format-block-grid" role="group" aria-label="Estructura de texto">
+                          <button type="button" className={editorFormatState.block === 'P' ? 'is-active' : ''} aria-pressed={editorFormatState.block === 'P'} onClick={() => onApplyEditorBlockFormat('P')}>Normal</button>
+                          <button type="button" className={editorFormatState.block === 'H1' ? 'is-active' : ''} aria-pressed={editorFormatState.block === 'H1'} onClick={() => onApplyEditorBlockFormat('H1')}>H1</button>
+                          <button type="button" className={editorFormatState.block === 'H2' ? 'is-active' : ''} aria-pressed={editorFormatState.block === 'H2'} onClick={() => onApplyEditorBlockFormat('H2')}>H2</button>
+                          <button type="button" className={editorFormatState.block === 'H3' ? 'is-active' : ''} aria-pressed={editorFormatState.block === 'H3'} onClick={() => onApplyEditorBlockFormat('H3')}>H3</button>
+                        </div>
+                      </section>
+                      <section className="format-popover-section" aria-label="Estilos inline">
+                        <p className="format-popover-label">Estilos</p>
+                        <div className="format-popover-row" role="group" aria-label="Estilos inline">
+                          <button type="button" className={`toolbar-icon-btn${editorFormatState.underline ? ' is-active' : ''}`} aria-pressed={editorFormatState.underline} onClick={() => onApplyEditorCommand('underline')} title="Subrayado (Ctrl/Cmd+U)" aria-label="Subrayado"><span className="toolbar-underline">U</span></button>
+                          <button type="button" className={`toolbar-icon-btn${editorFormatState.strikeThrough ? ' is-active' : ''}`} aria-pressed={editorFormatState.strikeThrough} onClick={() => onApplyEditorCommand('strikeThrough')} title="Tachado" aria-label="Tachado"><span className="toolbar-strike">S</span></button>
+                          <button type="button" className={`toolbar-icon-btn${editorFormatState.blockquote ? ' is-active' : ''}`} aria-pressed={editorFormatState.blockquote} onClick={onApplyEditorBlockquote} title="Cita" aria-label="Alternar cita"><QuoteIcon /></button>
+                          <button type="button" className="toolbar-text-btn" onClick={onCreateOrEditLink} title="Crear o editar enlace" aria-label="Crear o editar enlace">Link</button>
+                        </div>
+                      </section>
+                      <section className="format-popover-section" aria-label="Tamaño del texto">
+                        <p className="format-popover-label">Tamaño</p>
+                        <div className="format-popover-row compact" role="group" aria-label="Tamaño del texto">
+                          <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => onApplySelectionFontSizeStep(-3)} title="Reducir tamaño" aria-label="Reducir tamaño del texto">A−</button>
+                          <button type="button" className="toolbar-icon-btn font-size-step" onClick={() => onApplySelectionFontSizeStep(3)} title="Aumentar tamaño" aria-label="Aumentar tamaño del texto">A+</button>
+                        </div>
+                      </section>
+                      <section className="format-popover-section" aria-label="Color del texto">
+                        <p className="format-popover-label">Color</p>
+                        <div className="editor-color-palette" role="group" aria-label="Color del texto">
+                          {textColorPalette.map((color) => (
+                            <button key={color} type="button" className="color-swatch" style={{ backgroundColor: color }} onClick={() => onApplyEditorCommand('foreColor', color)} title={`Color ${color}`} aria-label={`Aplicar color ${color}`} />
+                          ))}
+                        </div>
+                      </section>
+                      <div className="format-popover-divider" />
+                      <div className="format-popover-row secondary" role="group" aria-label="Acciones secundarias">
+                        <button type="button" className="toolbar-text-btn" onClick={onInsertHorizontalRule} title="Insertar separador" aria-label="Insertar separador">Divisor</button>
+                        <button type="button" className="toolbar-text-btn" onClick={onClearEditorFormat} title="Limpiar formato" aria-label="Limpiar formato">Limpiar</button>
                       </div>
                     </div>
                   ) : null}
