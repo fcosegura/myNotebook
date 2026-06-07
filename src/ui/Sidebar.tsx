@@ -42,6 +42,7 @@ type SidebarProps = {
   onPageDelete: (page: Page) => void
   onBookmarkNotebookToggle: (notebookId: string) => void
   isBookmarkNotebookExpanded: (notebookId: string) => boolean
+  isLibraryNotebookExpanded: (notebookId: string) => boolean
   onOpenBookmarkPage: (pageId: string) => void
   isNotebookArchived: (notebook: Notebook) => boolean
   isPageBookmarked: (page: { tags: string[] }) => boolean
@@ -83,6 +84,7 @@ export function Sidebar(props: SidebarProps) {
     onPageDelete,
     onBookmarkNotebookToggle,
     isBookmarkNotebookExpanded,
+    isLibraryNotebookExpanded,
     onOpenBookmarkPage,
     isNotebookArchived,
     isPageBookmarked,
@@ -262,81 +264,88 @@ export function Sidebar(props: SidebarProps) {
                   ) : null}
                 </div>
               ) : null}
-              {sidebarNotebooks.map((notebook) => (
-                <article key={notebook.id} className={`sidebar-notebook-group${notebook.id === selectedNotebookId ? ' active' : ''}`}>
-                  <div className={`list-item-shell sidebar-notebook-item${notebook.id === selectedNotebookId ? ' active' : ''}`}>
-                    <button
-                      type="button"
-                      className={`list-item row-item${notebook.id === selectedNotebookId ? ' active' : ''}`}
-                      onClick={() => {
-                        onSelectNotebook(notebook.id)
-                        onSidebarViewChange('pages')
-                      }}
-                    >
-                      <span className="item-main">
-                        <span className="item-icon" aria-hidden="true">📒</span>
-                        <span>{notebook.title}</span>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="item-menu-button tree-hover-action"
-                      aria-label={`Acciones para ${notebook.title}`}
-                      onClick={(event) => stopAndRun(event, () => onToggleNotebookMenu(notebook.id))}
-                    >
-                      ···
-                    </button>
-                    {notebookMenuId === notebook.id ? (
-                      <div className="context-menu" onClick={(event) => event.stopPropagation()}>
-                        <button type="button" onClick={() => onNotebookRename(notebook)}>Renombrar</button>
-                        {isNotebookArchived(notebook) ? (
-                          <button type="button" onClick={() => onNotebookUnarchive(notebook)}>Desarchivar</button>
-                        ) : (
-                          <button type="button" onClick={() => onNotebookArchive(notebook)}>Archivar</button>
-                        )}
-                        <button type="button" onClick={() => onNotebookDelete(notebook)}>Eliminar</button>
-                      </div>
-                    ) : null}
-                  </div>
-                  {notebook.id === selectedNotebookId ? (
-                    <>
-                      <ul className="pages-tree" aria-label={`Páginas de ${notebook.title}`}>
-                        {pages.map((page) => (
-                          <li key={page.id} className={`page-tree-item list-item-shell${page.id === selectedPageId ? ' active' : ''}`}>
-                            <button type="button" className={`page-tree-link${page.id === selectedPageId ? ' active' : ''}`} onClick={() => onSelectPage(page.id)}>
-                              <PageTreeTitle
-                                page={page}
-                                isPageBookmarked={isPageBookmarked}
-                                formatPageUpdatedAt={formatPageUpdatedAt}
-                                getPagePreview={getPagePreview}
-                              />
-                            </button>
-                            <button type="button" className="tree-hover-action tree-menu-action" aria-label={`Opciones de ${page.title}`} title="Opciones" onClick={(event) => stopAndRun(event, () => onTogglePageMenu(page.id))}>···</button>
-                            {pageMenuId === page.id ? (
-                              <div className="context-menu page-context-menu" onClick={(event) => event.stopPropagation()}>
-                                <button type="button" disabled={selectedNotebookReadOnly} onClick={() => onPageBookmark(page)}>
-                                  {isPageBookmarked(page) ? 'Quitar favorito' : 'Marcar favorito'}
-                                </button>
-                                <button type="button" disabled={selectedNotebookReadOnly} onClick={onPageMove}>Mover</button>
-                                <button type="button" disabled={selectedNotebookReadOnly} onClick={() => onPageDelete(page)}>Eliminar</button>
-                              </div>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ul>
-                      {selectedNotebookReadOnly ? (
-                        <p className="notebook-sidebar-empty read-only-note">Archivo de solo lectura.</p>
-                      ) : null}
-                      {pages.length === 0 ? (
-                        <div className="notebook-sidebar-empty sidebar-empty-card">
-                          <p>Esta libreta está esperando su primera página.</p>
-                          <button type="button" disabled={selectedNotebookReadOnly} onClick={onPageCreate}>Crear primera página</button>
+              {sidebarNotebooks.map((notebook) => {
+                const isSelected = notebook.id === selectedNotebookId
+                const isExpanded = isSelected && isLibraryNotebookExpanded(notebook.id)
+                return (
+                  <article key={notebook.id} className={`sidebar-notebook-group${isSelected ? ' active' : ''}`}>
+                    <div className={`list-item-shell sidebar-notebook-item${isSelected ? ' active' : ''}`}>
+                      <button
+                        type="button"
+                        className={`list-item row-item${isSelected ? ' active' : ''}`}
+                        onClick={() => {
+                          onSelectNotebook(notebook.id)
+                          onSidebarViewChange('pages')
+                        }}
+                      >
+                        <span className="item-main">
+                          <span className="notebook-tree-chevron" aria-hidden="true">
+                            {isExpanded ? '▾' : '›'}
+                          </span>
+                          <span className="item-icon" aria-hidden="true">📒</span>
+                          <span>{notebook.title}</span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="item-menu-button tree-hover-action"
+                        aria-label={`Acciones para ${notebook.title}`}
+                        onClick={(event) => stopAndRun(event, () => onToggleNotebookMenu(notebook.id))}
+                      >
+                        ···
+                      </button>
+                      {notebookMenuId === notebook.id ? (
+                        <div className="context-menu" onClick={(event) => event.stopPropagation()}>
+                          <button type="button" onClick={() => onNotebookRename(notebook)}>Renombrar</button>
+                          {isNotebookArchived(notebook) ? (
+                            <button type="button" onClick={() => onNotebookUnarchive(notebook)}>Desarchivar</button>
+                          ) : (
+                            <button type="button" onClick={() => onNotebookArchive(notebook)}>Archivar</button>
+                          )}
+                          <button type="button" onClick={() => onNotebookDelete(notebook)}>Eliminar</button>
                         </div>
                       ) : null}
-                    </>
-                  ) : null}
-                </article>
-              ))}
+                    </div>
+                    {isExpanded ? (
+                      <>
+                        <ul className="pages-tree" aria-label={`Páginas de ${notebook.title}`}>
+                          {pages.map((page) => (
+                            <li key={page.id} className={`page-tree-item list-item-shell${page.id === selectedPageId ? ' active' : ''}`}>
+                              <button type="button" className={`page-tree-link${page.id === selectedPageId ? ' active' : ''}`} onClick={() => onSelectPage(page.id)}>
+                                <PageTreeTitle
+                                  page={page}
+                                  isPageBookmarked={isPageBookmarked}
+                                  formatPageUpdatedAt={formatPageUpdatedAt}
+                                  getPagePreview={getPagePreview}
+                                />
+                              </button>
+                              <button type="button" className="tree-hover-action tree-menu-action" aria-label={`Opciones de ${page.title}`} title="Opciones" onClick={(event) => stopAndRun(event, () => onTogglePageMenu(page.id))}>···</button>
+                              {pageMenuId === page.id ? (
+                                <div className="context-menu page-context-menu" onClick={(event) => event.stopPropagation()}>
+                                  <button type="button" disabled={selectedNotebookReadOnly} onClick={() => onPageBookmark(page)}>
+                                    {isPageBookmarked(page) ? 'Quitar favorito' : 'Marcar favorito'}
+                                  </button>
+                                  <button type="button" disabled={selectedNotebookReadOnly} onClick={onPageMove}>Mover</button>
+                                  <button type="button" disabled={selectedNotebookReadOnly} onClick={() => onPageDelete(page)}>Eliminar</button>
+                                </div>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                        {selectedNotebookReadOnly ? (
+                          <p className="notebook-sidebar-empty read-only-note">Archivo de solo lectura.</p>
+                        ) : null}
+                        {pages.length === 0 ? (
+                          <div className="notebook-sidebar-empty sidebar-empty-card">
+                            <p>Esta libreta está esperando su primera página.</p>
+                            <button type="button" disabled={selectedNotebookReadOnly} onClick={onPageCreate}>Crear primera página</button>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </article>
+                )
+              })}
             </>
           )}
         </>

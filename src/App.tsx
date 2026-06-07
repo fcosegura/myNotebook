@@ -178,6 +178,9 @@ function App() {
     setNotebooksCollapsed,
     toggleBookmarkNotebookExpanded,
     isBookmarkNotebookExpanded,
+    toggleLibraryNotebookExpanded,
+    isLibraryNotebookExpanded,
+    setLibraryNotebookExpanded,
   } = useSidebarState()
   const {
     imageModalAttachment,
@@ -1630,7 +1633,12 @@ function App() {
             onNotebookCreate={handleNotebookCreate}
             onPageCreate={handlePageCreate}
             onSelectNotebook={(notebookId) => {
-              setSelectedNotebookId(notebookId)
+              if (selectedNotebookId !== notebookId) {
+                setSelectedNotebookId(notebookId)
+                setLibraryNotebookExpanded(notebookId, true)
+              } else {
+                toggleLibraryNotebookExpanded(notebookId)
+              }
               setSidebarView('pages')
               void refreshPages(notebookId)
             }}
@@ -1646,6 +1654,7 @@ function App() {
             onPageDelete={(page) => void handlePageDelete(page)}
             onBookmarkNotebookToggle={toggleBookmarkNotebookExpanded}
             isBookmarkNotebookExpanded={isBookmarkNotebookExpanded}
+            isLibraryNotebookExpanded={isLibraryNotebookExpanded}
             onOpenBookmarkPage={(pageId) => void openBookmarkPage(pageId)}
             isNotebookArchived={isNotebookArchived}
             isPageBookmarked={isPageBookmarked}

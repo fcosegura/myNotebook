@@ -11,6 +11,7 @@ export function useSidebarState() {
   const [sidebarView, setSidebarView] = useState<SidebarView>('notebooks')
   const [sidebarPanelMode, setSidebarPanelMode] = useState<SidebarPanelMode>('library')
   const [bookmarkNotebooksCollapsed, setBookmarkNotebooksCollapsed] = useState<Set<string>>(new Set())
+  const [libraryNotebooksCollapsed, setLibraryNotebooksCollapsed] = useState<Set<string>>(new Set())
   const [notebookSidebarMode, setNotebookSidebarMode] = useState<NotebookSidebarMode>('active')
   const notebookSidebarModeRef = useRef<NotebookSidebarMode>('active')
   const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
@@ -31,6 +32,34 @@ export function useSidebarState() {
     return !bookmarkNotebooksCollapsed.has(notebookId)
   }
 
+  function toggleLibraryNotebookExpanded(notebookId: string) {
+    setLibraryNotebooksCollapsed((current) => {
+      const next = new Set(current)
+      if (next.has(notebookId)) {
+        next.delete(notebookId)
+      } else {
+        next.add(notebookId)
+      }
+      return next
+    })
+  }
+
+  function isLibraryNotebookExpanded(notebookId: string) {
+    return !libraryNotebooksCollapsed.has(notebookId)
+  }
+
+  function setLibraryNotebookExpanded(notebookId: string, expanded: boolean) {
+    setLibraryNotebooksCollapsed((current) => {
+      const next = new Set(current)
+      if (expanded) {
+        next.delete(notebookId)
+      } else {
+        next.add(notebookId)
+      }
+      return next
+    })
+  }
+
   function setNotebookSidebarModeSynced(mode: NotebookSidebarMode) {
     setNotebookSidebarMode(mode)
     notebookSidebarModeRef.current = mode
@@ -43,6 +72,7 @@ export function useSidebarState() {
     sidebarView,
     sidebarPanelMode,
     bookmarkNotebooksCollapsed,
+    libraryNotebooksCollapsed,
     notebookSidebarMode,
     notebookSidebarModeRef,
     notebooksCollapsed,
@@ -55,5 +85,9 @@ export function useSidebarState() {
     setNotebooksCollapsed,
     toggleBookmarkNotebookExpanded,
     isBookmarkNotebookExpanded,
+    toggleLibraryNotebookExpanded,
+    isLibraryNotebookExpanded,
+    setLibraryNotebookExpanded,
   }
 }
+
