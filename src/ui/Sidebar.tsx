@@ -347,11 +347,13 @@ function PageTreeTitle({
   return (
     <span className="page-tree-label">
       <span className="page-tree-title-row">
-        {bookmarked ? (
-          <span className="item-icon page-tree-bookmark-icon" aria-hidden="true" title="Marcada como favorita">
-            🔖
-          </span>
-        ) : null}
+        <span
+          className={`item-icon page-tree-bookmark-icon${bookmarked ? ' is-visible' : ''}`}
+          aria-hidden="true"
+          title={bookmarked ? 'Marcada como favorita' : undefined}
+        >
+          {bookmarked ? '🔖' : ''}
+        </span>
         <span className="page-tree-title-text">{page.title}</span>
       </span>
       <span className="page-tree-meta">

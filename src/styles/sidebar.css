@@ -294,7 +294,13 @@
 }
 
 .page-tree-bookmark-icon {
+  width: 18px;
+  opacity: 0;
   color: var(--warning);
+}
+
+.page-tree-bookmark-icon.is-visible {
+  opacity: 1;
 }
 
 .tree-hover-action,

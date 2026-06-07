@@ -1,6 +1,6 @@
 import type { ClipboardEvent, FormEvent, MouseEvent, RefObject } from 'react'
 import type { Attachment, Page } from '../storage/db'
-import { BookmarkIcon, CloudSaveIcon, ListBulletIcon, ListNumberIcon, NotebookEmptyIcon, PageEmptyIcon, QuoteIcon, RedoIcon, UndoIcon } from './icons'
+import { CloudSaveIcon, ListBulletIcon, ListNumberIcon, NotebookEmptyIcon, PageEmptyIcon, QuoteIcon, RedoIcon, UndoIcon } from './icons'
 import { AttachmentsPanel } from './AttachmentsPanel'
 
 type EditorCommand = 'bold' | 'italic' | 'insertUnorderedList' | 'insertOrderedList' | 'underline' | 'strikeThrough' | 'foreColor'
@@ -133,16 +133,6 @@ export function EditorPanel({
                 }}
               />
               <div className="editor-header-actions">
-                <button
-                  type="button"
-                  className={`editor-icon-button bookmark-icon${isCurrentPageBookmarked ? ' active' : ''}`}
-                  aria-pressed={isCurrentPageBookmarked}
-                  onClick={onPageBookmark}
-                  title={isCurrentPageBookmarked ? 'Quitar favorito' : 'Marcar página'}
-                  aria-label={isCurrentPageBookmarked ? 'Quitar favorito' : 'Marcar página'}
-                >
-                  <BookmarkIcon filled={isCurrentPageBookmarked} />
-                </button>
                 <button
                   type="button"
                   className={`editor-icon-button save-icon${lastSavedAt !== null ? ' saved' : ''}`}
