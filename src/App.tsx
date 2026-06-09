@@ -210,6 +210,21 @@ function App() {
     selectedNotebookIdRef.current = selectedNotebookId
   }, [selectedNotebookId])
 
+  useEffect(() => {
+    const channel = new BroadcastChannel('mynotebook-pwa-integration')
+    channel.onmessage = (event) => {
+      if (event.data?.type === 'SELECT_NOTEBOOK') {
+        const ticketNumber = event.data.ticketNumber
+        if (ticketNumber) {
+          void openNotebookByTitle(ticketNumber)
+        }
+      }
+    }
+    return () => {
+      channel.close()
+    }
+  }, [])
+
   function markDataSaved() {
     setLastSavedAt(Date.now())
   }
@@ -365,11 +380,13 @@ function App() {
       const existingTitles = new Set(existingNotebooks.map(nb => nb.title.trim().toLowerCase()))
       
       let createdAny = false
-      for (const ticket of tickets) {
-        const cleanTicket = ticket.trim()
+      for (const item of tickets) {
+        const ticketNumber = typeof item === 'string' ? item : item.ticketNumber;
+        const taskId = typeof item === 'string' ? undefined : item.taskId;
+        const cleanTicket = typeof ticketNumber === 'string' ? ticketNumber.trim() : '';
         if (cleanTicket) {
           if (!existingTitles.has(cleanTicket.toLowerCase())) {
-            await createNotebook(cleanTicket)
+            await createNotebook(cleanTicket, taskId)
             createdAny = true
           }
           
@@ -401,6 +418,17 @@ function App() {
     }
   }
 
+  function handleOpenPwaTask(taskId: string) {
+    const channel = new BroadcastChannel('mynotebook-pwa-integration')
+    channel.postMessage({ type: 'SELECT_TASK', taskId })
+    
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    const pwaOrigin = isLocal
+      ? 'http://localhost:8788'
+      : 'https://taskmanagerpwa.fcovidalsegura.workers.dev'
+    window.open(`${pwaOrigin}/?taskId=${encodeURIComponent(taskId)}`, 'taskmanagerpwa')
+  }
+
   async function bootstrap() {
     const params = new URLSearchParams(window.location.search)
     const urlToken = params.get('token')
@@ -423,7 +451,7 @@ function App() {
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
         const pwaOrigin = isLocal
           ? 'http://localhost:8788'
-          : 'https://taskmanagerpwa.fcosegura.workers.dev'
+          : 'https://taskmanagerpwa.fcovidalsegura.workers.dev'
           
         const resp = await fetch(`${pwaOrigin}/api/mynotebook/verify-token?token=${encodeURIComponent(urlToken)}`)
         if (!resp.ok) {
@@ -474,7 +502,7 @@ function App() {
           const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
           const pwaOrigin = isLocal
             ? 'http://localhost:8788'
-            : 'https://taskmanagerpwa.fcosegura.workers.dev'
+            : 'https://taskmanagerpwa.fcovidalsegura.workers.dev'
             
           await syncPendingJiraNotebooks(storedToken, pwaOrigin)
           await refreshNotebooks()
@@ -1798,6 +1826,8 @@ function App() {
           <EditorPanel
             selectedNotebookId={selectedNotebookId}
             selectedNotebookTitle={selectedNotebook?.title ?? null}
+            pwaTaskId={selectedNotebook?.pwaTaskId}
+            onOpenPwaTask={handleOpenPwaTask}
             selectedPage={selectedPage}
             selectedPageAttachments={selectedPageAttachments}
             readOnly={selectedNotebookReadOnly}

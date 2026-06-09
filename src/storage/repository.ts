@@ -100,7 +100,7 @@ export async function listAttachmentsByPage(pageId: string): Promise<Attachment[
   return Promise.all(attachments.map(decryptAttachmentSafely))
 }
 
-export async function createNotebook(title: string): Promise<Notebook> {
+export async function createNotebook(title: string, pwaTaskId?: string): Promise<Notebook> {
   const now = Date.now()
   const plainTitle = title.trim() || 'Nueva libreta'
   const notebook: Notebook = {
@@ -112,6 +112,7 @@ export async function createNotebook(title: string): Promise<Notebook> {
     bookmarkPageId: null,
     createdAt: now,
     updatedAt: now,
+    pwaTaskId,
   }
   await db.notebooks.add(notebook)
 

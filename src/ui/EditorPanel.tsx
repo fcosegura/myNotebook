@@ -61,6 +61,8 @@ type EditorPanelProps = {
   onOpenAttachmentModal: (attachment: Attachment) => void
   onCopyAttachmentReference: (attachment: Attachment) => void
   onRemoveAttachment: (attachmentId: string) => void
+  pwaTaskId?: string
+  onOpenPwaTask?: (taskId: string) => void
 }
 
 export function EditorPanel({
@@ -108,6 +110,8 @@ export function EditorPanel({
   onOpenAttachmentModal,
   onCopyAttachmentReference,
   onRemoveAttachment,
+  pwaTaskId,
+  onOpenPwaTask,
 }: EditorPanelProps) {
   return (
     <section className="workspace-panel">
@@ -137,7 +141,33 @@ export function EditorPanel({
         ) : (
           <>
             <div className="editor-context-row">
-              <span className="editor-context-notebook">📒 {selectedNotebookTitle ?? 'Libreta'}</span>
+              <span className="editor-context-notebook">
+                📒 {selectedNotebookTitle ?? 'Libreta'}
+                {pwaTaskId && onOpenPwaTask && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPwaTask(pwaTaskId)}
+                    className="pwa-backlink-btn"
+                    title="Ver tarea correspondiente en taskmanagerpwa"
+                    style={{
+                      marginLeft: '10px',
+                      background: 'rgba(37, 99, 235, 0.1)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      color: '#2563eb',
+                      padding: '2px 8px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    Ver tarea en PWA ↗
+                  </button>
+                )}
+              </span>
               {readOnly ? <span className="editor-readonly-badge">Archivo · solo lectura</span> : null}
               <div className="editor-context-actions" aria-label="Acciones de página">
                 <button type="button" onClick={onSelectPreviousPage} disabled={!canMoveToPreviousPage} title="Página anterior">‹</button>

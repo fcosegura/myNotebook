@@ -22,6 +22,7 @@ export type Notebook = {
   bookmarkPageId: string | null
   createdAt: number
   updatedAt: number
+  pwaTaskId?: string
 }
 
 export type Page = {
