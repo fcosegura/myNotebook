@@ -425,7 +425,7 @@ function App() {
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     const pwaOrigin = isLocal
       ? 'http://localhost:8788'
-      : 'https://taskmanagerpwa.fcovidalsegura.workers.dev'
+      : 'https://taskmanagerpwa.fcosegura.workers.dev'
     window.open(`${pwaOrigin}/?taskId=${encodeURIComponent(taskId)}`, 'taskmanagerpwa')
   }
 
@@ -451,7 +451,7 @@ function App() {
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
         const pwaOrigin = isLocal
           ? 'http://localhost:8788'
-          : 'https://taskmanagerpwa.fcovidalsegura.workers.dev'
+          : 'https://taskmanagerpwa.fcosegura.workers.dev'
           
         const resp = await fetch(`${pwaOrigin}/api/mynotebook/verify-token?token=${encodeURIComponent(urlToken)}`)
         if (!resp.ok) {
@@ -502,7 +502,7 @@ function App() {
           const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
           const pwaOrigin = isLocal
             ? 'http://localhost:8788'
-            : 'https://taskmanagerpwa.fcovidalsegura.workers.dev'
+            : 'https://taskmanagerpwa.fcosegura.workers.dev'
             
           await syncPendingJiraNotebooks(storedToken, pwaOrigin)
           await refreshNotebooks()
