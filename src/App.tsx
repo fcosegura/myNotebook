@@ -585,6 +585,8 @@ function App() {
         const { userIdHash, notebookKey, sessionToken } = data
         
         await switchDatabase(userIdHash)
+        const switchedUser = await ensureUser()
+        setUser(switchedUser)
         await unlockVaultWithDirectKey(notebookKey)
         
         sessionStorage.setItem('mynotebook_bypass_key', notebookKey)
@@ -619,6 +621,8 @@ function App() {
       if (storedKey && storedUser && storedToken) {
         try {
           await switchDatabase(storedUser)
+          const switchedUser = await ensureUser()
+          setUser(switchedUser)
           await unlockVaultWithDirectKey(storedKey)
           setUnlocked(true)
           
