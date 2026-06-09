@@ -14,6 +14,7 @@ import {
   isEncryptedField,
   isVaultUnlocked,
   unlockVaultWithPin,
+  unlockVaultWithDirectKey,
 } from '../features/session/vault'
 
 const DEFAULT_NOTEBOOK_COLOR = '#4f46e5'
@@ -517,5 +518,81 @@ async function decryptAttachmentSafely(attachment: Attachment): Promise<Attachme
     return await decryptAttachment(attachment)
   } catch {
     return attachment
+  }
+}
+
+export async function rotateEncryptionKeyToBypassKey(
+  currentPin: string,
+  currentSalt: string,
+  currentIterations: number,
+  bypassKeyBase64: string,
+): Promise<void> {
+  if (!isVaultUnlocked()) {
+    throw new Error('Debes desbloquear la sesion antes de cambiar la clave.')
+  }
+
+  const [notebooks, pages, attachments] = await Promise.all([
+    db.notebooks.toArray(),
+    db.pages.toArray(),
+    db.attachments.toArray(),
+  ])
+
+  const plainNotebooks = await Promise.all(
+    notebooks.map(async (notebook) => ({
+      ...notebook,
+      title: await decryptField(notebook.title),
+    })),
+  )
+  const plainPages = await Promise.all(
+    pages.map(async (page) => {
+      const tagsRaw = page.tags[0] ?? '[]'
+      const tagsJson = await decryptField(tagsRaw)
+      return {
+        ...page,
+        title: await decryptField(page.title),
+        content: await decryptField(page.content),
+        tags: parseTags(tagsJson),
+      }
+    }),
+  )
+  const plainAttachments = await Promise.all(
+    attachments.map(async (attachment) => ({
+      ...attachment,
+      blob: await decryptBlob(attachment.blob),
+    })),
+  )
+
+  await unlockVaultWithDirectKey(bypassKeyBase64)
+
+  try {
+    const encryptedNotebooks = await Promise.all(
+      plainNotebooks.map(async (notebook) => ({
+        ...notebook,
+        title: await encryptField(notebook.title),
+      })),
+    )
+    const encryptedPages = await Promise.all(
+      plainPages.map(async (page) => ({
+        ...page,
+        title: await encryptField(page.title),
+        content: await encryptField(page.content),
+        tags: [await encryptField(JSON.stringify(page.tags))],
+      })),
+    )
+    const encryptedAttachments = await Promise.all(
+      plainAttachments.map(async (attachment) => ({
+        ...attachment,
+        blob: await encryptBlob(attachment.blob),
+      })),
+    )
+
+    await db.transaction('rw', db.notebooks, db.pages, db.attachments, async () => {
+      await db.notebooks.bulkPut(encryptedNotebooks)
+      await db.pages.bulkPut(encryptedPages)
+      await db.attachments.bulkPut(encryptedAttachments)
+    })
+  } catch (error) {
+    await unlockVaultWithPin(currentPin, currentSalt, currentIterations)
+    throw error
   }
 }

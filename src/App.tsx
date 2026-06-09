@@ -11,7 +11,13 @@ import {
 import './App.css'
 import type MiniSearch from 'minisearch'
 import { switchDatabase, type Attachment, type Notebook, type Page, type UserLocal } from './storage/db'
-import { parseEncryptedBackup, serializeEncryptedBackup } from './features/backup/crypto'
+import {
+  parseEncryptedBackup,
+  serializeEncryptedBackup,
+  attachmentFromExport,
+  attachmentToExport,
+  type BackupPayload,
+} from './features/backup/crypto'
 import {
   addAttachment,
   createNotebook,
@@ -35,10 +41,21 @@ import {
   updateNotebook,
   updatePage,
   updateUser,
+  rotateEncryptionKeyToBypassKey,
 } from './storage/repository'
 import { buildSearchIndex, querySearch, type SearchResult } from './features/search/search'
 import { createSalt, hashPin } from './features/session/session'
-import { lockVault, unlockVaultWithPin, unlockVaultWithDirectKey } from './features/session/vault'
+import {
+  lockVault,
+  unlockVaultWithPin,
+  unlockVaultWithDirectKey,
+  getActiveContentKey,
+  deriveContentKey,
+  decryptFieldWithKey,
+  encryptFieldWithKey,
+  decryptBlobWithKey,
+  encryptBlobWithKey,
+} from './features/session/vault'
 import { AppHeader } from './ui/AppHeader'
 import { LockScreen } from './ui/LockScreen'
 import { Sidebar } from './ui/Sidebar'
@@ -98,6 +115,112 @@ const DEFAULT_EDITOR_FORMAT_STATE: EditorFormatState = {
 
 function isPageBookmarked(page: { tags: string[] }): boolean {
   return page.tags.includes(BOOKMARK_TAG)
+}
+
+async function translateBackupPayloadToCurrentKey(
+  payload: BackupPayload,
+  activeKey: CryptoKey,
+  requestSecret: (title: string, submitLabel: string) => Promise<string | null>,
+): Promise<BackupPayload> {
+  let needsTranslation = false
+  let sampleEncryptedValue = ''
+
+  if (payload.notebooks.length > 0) {
+    sampleEncryptedValue = payload.notebooks[0].title
+  } else if (payload.pages.length > 0) {
+    sampleEncryptedValue = payload.pages[0].title
+  }
+
+  if (sampleEncryptedValue) {
+    try {
+      await decryptFieldWithKey(sampleEncryptedValue, activeKey)
+    } catch {
+      needsTranslation = true
+    }
+  }
+
+  const isPwa = sessionStorage.getItem('mynotebook_bypass_key') !== null
+  const baseUsers = payload.users.map((u) => ({
+    ...u,
+    sessionConfig: isPwa ? null : u.sessionConfig,
+  }))
+
+  if (!needsTranslation) {
+    return {
+      ...payload,
+      users: baseUsers,
+    }
+  }
+
+  const backupUser = payload.users.find(u => u.sessionConfig !== null)
+  if (!backupUser || !backupUser.sessionConfig) {
+    throw new Error('El backup no contiene informacion de configuracion de sesion (PIN) para su descifrado.')
+  }
+
+  const { salt, iterations } = backupUser.sessionConfig
+
+  const backupPin = await requestSecret('Ingresa el PIN del backup para importar sus datos', 'Descifrar backup')
+  if (!backupPin) {
+    throw new Error('Importacion cancelada: se requiere el PIN del backup para su traducción.')
+  }
+
+  const backupKey = await deriveContentKey(backupPin, salt, iterations)
+
+  if (sampleEncryptedValue) {
+    try {
+      await decryptFieldWithKey(sampleEncryptedValue, backupKey)
+    } catch {
+      throw new Error('El PIN del backup ingresado es incorrecto.')
+    }
+  }
+
+  const translatedNotebooks = await Promise.all(
+    payload.notebooks.map(async (notebook) => {
+      const plainTitle = await decryptFieldWithKey(notebook.title, backupKey)
+      const encryptedTitle = await encryptFieldWithKey(plainTitle, activeKey)
+      return {
+        ...notebook,
+        title: encryptedTitle,
+      }
+    })
+  )
+
+  const translatedPages = await Promise.all(
+    payload.pages.map(async (page) => {
+      const tagsRaw = page.tags[0] ?? '[]'
+      const tagsJson = await decryptFieldWithKey(tagsRaw, backupKey)
+      const plainTitle = await decryptFieldWithKey(page.title, backupKey)
+      const plainContent = await decryptFieldWithKey(page.content, backupKey)
+
+      return {
+        ...page,
+        title: await encryptFieldWithKey(plainTitle, activeKey),
+        content: await encryptFieldWithKey(plainContent, activeKey),
+        tags: [await encryptFieldWithKey(tagsJson, activeKey)],
+      }
+    })
+  )
+
+  const translatedAttachments = await Promise.all(
+    payload.attachments.map(async (attachment) => {
+      const encryptedAttachment = attachmentFromExport(attachment)
+      const decryptedBlob = await decryptBlobWithKey(encryptedAttachment.blob, backupKey)
+      const reEncryptedBlob = await encryptBlobWithKey(decryptedBlob, activeKey)
+      const tempAttachment = {
+        ...encryptedAttachment,
+        blob: reEncryptedBlob,
+      }
+      return attachmentToExport(tempAttachment)
+    })
+  )
+
+  return {
+    ...payload,
+    users: baseUsers,
+    notebooks: translatedNotebooks,
+    pages: translatedPages,
+    attachments: translatedAttachments,
+  }
 }
 
 const processedTokens = new Set<string>()
@@ -991,11 +1114,29 @@ function App() {
     try {
       await unlockVaultWithPin(pinInput, user.sessionConfig.salt, user.sessionConfig.iterations)
 
-      try {
-        await encryptExistingDataAtRest()
-      } catch (error) {
-        setBackupStatus(`No se pudo completar la migración de cifrado: ${(error as Error).message}`)
-        setBackupStatusType('error')
+      const storedKey = sessionStorage.getItem('mynotebook_bypass_key')
+      if (storedKey) {
+        setPinError('Migrando base de datos para integración con PWA...')
+        await rotateEncryptionKeyToBypassKey(
+          pinInput,
+          user.sessionConfig.salt,
+          user.sessionConfig.iterations,
+          storedKey
+        )
+        const updatedUser = {
+          ...user,
+          sessionConfig: null,
+        }
+        await updateUser(updatedUser)
+        setUser(updatedUser)
+        setPinError('')
+      } else {
+        try {
+          await encryptExistingDataAtRest()
+        } catch (error) {
+          setBackupStatus(`No se pudo completar la migración de cifrado: ${(error as Error).message}`)
+          setBackupStatusType('error')
+        }
       }
       await refreshNotebooks()
       markDataSaved()
@@ -1660,7 +1801,19 @@ function App() {
         })
         try {
           const text = await file.text()
-          const payload = await parseEncryptedBackup(text, passphrase)
+          const encryptedPayload = await parseEncryptedBackup(text, passphrase)
+
+          const activeKey = getActiveContentKey()
+          if (!activeKey) {
+            throw new Error('Sesión bloqueada. Desbloquea la sesión para importar.')
+          }
+
+          const payload = await translateBackupPayloadToCurrentKey(
+            encryptedPayload,
+            activeKey,
+            requestSecret,
+          )
+
           if (shouldOverwrite) {
             await importBackupPayload(payload)
           } else {
