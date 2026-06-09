@@ -1,12 +1,14 @@
 .layout {
   min-height: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .master-detail-layout {
   display: grid;
   grid-template-columns: minmax(220px, 284px) minmax(0, 1fr);
   gap: 10px;
+  min-height: 0;
 }
 
 .master-detail-layout.sidebar-collapsed {
@@ -61,6 +63,8 @@
 
 .workspace-panel {
   display: flex;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .master-detail-main {
@@ -167,8 +171,10 @@
 
 .notebook-tree,
 .bookmarks-tree {
+  flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .notebook-tree-header {

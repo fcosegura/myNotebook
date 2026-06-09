@@ -363,9 +363,10 @@
 }
 
 .editor-richtext {
-  min-height: 460px;
+  min-height: 0;
   flex: 1;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 34px min(5vw, 58px);
   outline: 0;
   color: var(--text);
@@ -446,11 +447,14 @@
 }
 
 .attachments {
+  flex: 0 0 auto;
+  max-height: min(220px, 28vh);
   margin-top: 10px;
   border: 1px solid #e5eaf2;
   border-radius: 12px;
   background: var(--surface);
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .attachments:has(.attachments-empty) {
