@@ -129,7 +129,7 @@
 
 .editor-richtext-shell {
   min-height: 0;
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   border: 1px solid #e5eaf2;
@@ -363,9 +363,12 @@
 }
 
 .editor-richtext {
-  min-height: 460px;
-  flex: 1;
-  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 34px min(5vw, 58px);
   outline: 0;
   color: var(--text);

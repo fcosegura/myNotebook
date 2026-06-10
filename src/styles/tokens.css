@@ -29,6 +29,7 @@
 }
 
 .app-shell {
+  height: 100vh;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -37,6 +38,7 @@
   background: var(--bg);
   padding: 10px 12px;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .app-shell button,
