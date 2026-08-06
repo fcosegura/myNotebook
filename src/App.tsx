@@ -64,6 +64,14 @@ import {
   restoreCaretAtMarker,
   unwrapBlockquoteElement,
 } from './ui/editorRichText'
+import {
+  TASKMANAGER_CREATE_NOTEBOOK_MESSAGE_TYPE,
+  createNotebookErrorResponse,
+  createNotebookSuccessResponse,
+  isAllowedTaskManagerOrigin,
+  isTaskManagerCreateNotebookMessage,
+  parseTaskManagerAllowedOrigins,
+} from './features/taskmanager/postMessage'
 
 const BOOKMARK_TAG = 'bookmark'
 const INACTIVITY_AUTO_LOCK_MS = 30 * 60 * 1000
@@ -73,6 +81,9 @@ const TEXT_COLOR_PALETTE = [
 ]
 const FONT_SIZE_STEPS_PX = [12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32] as const
 const MAX_PIN_DIGITS = 32
+const TASKMANAGER_ALLOWED_ORIGINS = parseTaskManagerAllowedOrigins(
+  import.meta.env.VITE_TASKMANAGER_ALLOWED_ORIGINS,
+)
 type EditorBlockFormat = 'P' | 'H1' | 'H2' | 'H3'
 type EditorFormatState = {
   bold: boolean
@@ -198,6 +209,11 @@ function App() {
   /** Evita pisar el DOM del editor con `selectedPage` desactualizado al re-renderizar la misma pagina. */
   const editorBoundPageIdRef = useRef<string | null>(null)
   const selectedNotebookIdRef = useRef<string | null>(null)
+  const unlockedRef = useRef(unlocked)
+  const markDataSavedRef = useRef<() => void>(() => {})
+  const refreshNotebooksRef = useRef<(options?: { preferNotebookId?: string | null }) => Promise<void>>(
+    async () => {},
+  )
   const pagePersistChainRef = useRef(Promise.resolve())
 
   useEffect(() => {
@@ -211,6 +227,12 @@ function App() {
   function markDataSaved() {
     setLastSavedAt(Date.now())
   }
+
+  markDataSavedRef.current = markDataSaved
+
+  useEffect(() => {
+    unlockedRef.current = unlocked
+  }, [unlocked])
 
   useEffect(() => {
     function handleGlobalClick() {
@@ -402,6 +424,8 @@ function App() {
     await refreshAllPages()
   }
 
+  refreshNotebooksRef.current = refreshNotebooks
+
   async function refreshPages(notebookId: string) {
     const allPages = await listPagesByNotebook(notebookId)
     setPages(allPages)
@@ -413,6 +437,100 @@ function App() {
       : allPages[0]?.id ?? null
     setSelectedPageId(nextPageId)
   }
+
+  useEffect(() => {
+    function postTaskManagerResponse(
+      event: MessageEvent,
+      response: ReturnType<typeof createNotebookSuccessResponse> | ReturnType<typeof createNotebookErrorResponse>,
+    ) {
+      const replyTarget = event.source as Window | null
+      replyTarget?.postMessage(response, event.origin)
+    }
+
+    function handleTaskManagerMessage(event: MessageEvent) {
+      if (!isAllowedTaskManagerOrigin(event.origin, TASKMANAGER_ALLOWED_ORIGINS)) {
+        return
+      }
+
+      if (!isTaskManagerCreateNotebookMessage(event.data)) {
+        if (
+          typeof event.data === 'object' &&
+          event.data !== null &&
+          'type' in event.data &&
+          event.data.type === TASKMANAGER_CREATE_NOTEBOOK_MESSAGE_TYPE &&
+          'requestId' in event.data &&
+          typeof event.data.requestId === 'string'
+        ) {
+          postTaskManagerResponse(
+            event,
+            createNotebookErrorResponse(
+              event.data.requestId,
+              'invalid-message',
+              'El mensaje para crear la libreta no tiene el formato esperado.',
+            ),
+          )
+        }
+        return
+      }
+
+      void (async () => {
+        const title = event.data.payload.title.trim()
+        if (title.length === 0) {
+          postTaskManagerResponse(
+            event,
+            createNotebookErrorResponse(
+              event.data.requestId,
+              'invalid-title',
+              'El nombre de la libreta no puede estar vacío.',
+            ),
+          )
+          return
+        }
+
+        if (!unlockedRef.current) {
+          postTaskManagerResponse(
+            event,
+            createNotebookErrorResponse(
+              event.data.requestId,
+              'vault-locked',
+              'Desbloquea MyNotebook antes de crear libretas desde TaskManager.',
+            ),
+          )
+          return
+        }
+
+        try {
+          const notebook = await createNotebook(title)
+          notebookSidebarModeRef.current = 'active'
+          setNotebookSidebarMode('active')
+          await refreshNotebooksRef.current({ preferNotebookId: notebook.id })
+          markDataSavedRef.current()
+          postTaskManagerResponse(
+            event,
+            createNotebookSuccessResponse(event.data.requestId, {
+              id: notebook.id,
+              title,
+            }),
+          )
+        } catch (error) {
+          console.error('TaskManager notebook creation failed:', error)
+          postTaskManagerResponse(
+            event,
+            createNotebookErrorResponse(
+              event.data.requestId,
+              'create-failed',
+              'No se pudo crear la libreta en MyNotebook.',
+            ),
+          )
+        }
+      })()
+    }
+
+    window.addEventListener('message', handleTaskManagerMessage)
+    return () => {
+      window.removeEventListener('message', handleTaskManagerMessage)
+    }
+  }, [notebookSidebarModeRef, setNotebookSidebarMode])
 
   async function handleNotebookCreate() {
     if (notebookSidebarModeRef.current === 'archived') {
