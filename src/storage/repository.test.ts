@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
 import {
   addAttachment,
-  createNotebook,
+  createSpace,
   createPage,
   deleteAttachment,
-  deleteNotebook,
+  deleteSpace,
   deletePage,
   encryptExistingDataAtRest,
   ensureUser,
@@ -14,10 +14,10 @@ import {
   importBackupPayloadWithMode,
   listAllAttachments,
   listAttachmentsByPage,
-  listNotebooks,
-  listPagesByNotebook,
+  listSpaces,
+  listPagesBySpace,
   movePageBefore,
-  updateNotebook,
+  updateSpace,
   updatePage,
   updateUser,
 } from './repository'
@@ -77,23 +77,23 @@ describe('persistencia (Dexie / IndexedDB)', () => {
     expect(await db.users.count()).toBe(1)
   })
 
-  it('createNotebook persiste libreta, pagina inicial y bookmark', async () => {
-    const notebook = await createNotebook('  Mi libreta  ')
-    const stored = await db.notebooks.get(notebook.id)
-    const pages = await listPagesByNotebook(notebook.id)
+  it('createSpace persiste espacio, pagina inicial y bookmark', async () => {
+    const space = await createSpace('  Mi espacio  ')
+    const stored = await db.spaces.get(space.id)
+    const pages = await listPagesBySpace(space.id)
 
     expect(stored).toBeDefined()
     expect(pages).toHaveLength(1)
     expect(stored?.bookmarkPageId).toBe(pages[0]?.id)
 
-    const listed = await listNotebooks()
-    expect(listed.some((item) => item.id === notebook.id)).toBe(true)
-    expect(listed.find((item) => item.id === notebook.id)?.title).toBe('Mi libreta')
+    const listed = await listSpaces()
+    expect(listed.some((item) => item.id === space.id)).toBe(true)
+    expect(listed.find((item) => item.id === space.id)?.title).toBe('Mi espacio')
   })
 
   it('updatePage y getPageById conservan titulo y contenido', async () => {
-    const notebook = await createNotebook('Libreta')
-    const page = await createPage(notebook.id, 'Borrador')
+    const space = await createSpace('Espacio')
+    const page = await createPage(space.id, 'Borrador')
 
     await updatePage({
       ...page,
@@ -109,29 +109,29 @@ describe('persistencia (Dexie / IndexedDB)', () => {
   })
 
   it('updatePage sin touchUpdatedAt no altera el orden de paginas', async () => {
-    const notebook = await createNotebook('Bookmark orden')
-    const [firstPage] = await listPagesByNotebook(notebook.id)
-    const secondPage = await createPage(notebook.id, 'Segunda')
-    const thirdPage = await createPage(notebook.id, 'Tercera')
+    const space = await createSpace('Bookmark orden')
+    const [firstPage] = await listPagesBySpace(space.id)
+    const secondPage = await createPage(space.id, 'Segunda')
+    const thirdPage = await createPage(space.id, 'Tercera')
 
-    const orderBefore = (await listPagesByNotebook(notebook.id)).map((page) => page.id)
+    const orderBefore = (await listPagesBySpace(space.id)).map((page) => page.id)
     expect(orderBefore).toEqual([firstPage.id, secondPage.id, thirdPage.id])
 
     await updatePage({ ...firstPage, tags: ['bookmark'] }, { touchUpdatedAt: false })
 
-    const orderAfter = (await listPagesByNotebook(notebook.id)).map((page) => page.id)
+    const orderAfter = (await listPagesBySpace(space.id)).map((page) => page.id)
     expect(orderAfter).toEqual(orderBefore)
   })
 
   it('movePageBefore reordena paginas por updatedAt', async () => {
-    const notebook = await createNotebook('Orden')
-    const pageA = await createPage(notebook.id, 'A')
-    const pageB = await createPage(notebook.id, 'B')
-    const pageC = await createPage(notebook.id, 'C')
+    const space = await createSpace('Orden')
+    const pageA = await createPage(space.id, 'A')
+    const pageB = await createPage(space.id, 'B')
+    const pageC = await createPage(space.id, 'C')
 
-    await movePageBefore(notebook.id, pageC.id, pageA.id)
+    await movePageBefore(space.id, pageC.id, pageA.id)
 
-    const ordered = (await listPagesByNotebook(notebook.id)).map((page) => page.id)
+    const ordered = (await listPagesBySpace(space.id)).map((page) => page.id)
     const indexA = ordered.indexOf(pageA.id)
     const indexB = ordered.indexOf(pageB.id)
     const indexC = ordered.indexOf(pageC.id)
@@ -140,8 +140,8 @@ describe('persistencia (Dexie / IndexedDB)', () => {
   })
 
   it('addAttachment y deleteAttachment persisten blobs cifrados', async () => {
-    const notebook = await createNotebook('Adjuntos')
-    const page = await createPage(notebook.id, 'Pagina')
+    const space = await createSpace('Adjuntos')
+    const page = await createPage(space.id, 'Pagina')
     const blob = new Blob(['pixel-data'], { type: 'image/png' })
 
     const attachment = await addAttachment(page.id, blob, 100, 50, 'foto.png')
@@ -156,46 +156,46 @@ describe('persistencia (Dexie / IndexedDB)', () => {
   })
 
   it('deletePage elimina adjuntos y limpia bookmark si aplica', async () => {
-    const notebook = await createNotebook('Eliminar pagina')
-    const page = await createPage(notebook.id, 'Temporal')
+    const space = await createSpace('Eliminar pagina')
+    const page = await createPage(space.id, 'Temporal')
     const blob = new Blob(['x'], { type: 'image/png' })
     await addAttachment(page.id, blob, 1, 1)
 
-    await db.notebooks.update(notebook.id, { bookmarkPageId: page.id })
+    await db.spaces.update(space.id, { bookmarkPageId: page.id })
     await deletePage(page.id)
 
     expect(await db.pages.get(page.id)).toBeUndefined()
     expect(await db.attachments.where('pageId').equals(page.id).count()).toBe(0)
 
-    const updatedNotebook = await db.notebooks.get(notebook.id)
-    expect(updatedNotebook?.bookmarkPageId).toBeNull()
+    const updatedSpace = await db.spaces.get(space.id)
+    expect(updatedSpace?.bookmarkPageId).toBeNull()
   })
 
-  it('deleteNotebook elimina paginas y adjuntos en cascada', async () => {
-    const notebook = await createNotebook('Eliminar libreta')
-    const page = await createPage(notebook.id, 'Pagina')
+  it('deleteSpace elimina paginas y adjuntos en cascada', async () => {
+    const space = await createSpace('Eliminar espacio')
+    const page = await createPage(space.id, 'Pagina')
     await addAttachment(page.id, new Blob(['x'], { type: 'image/png' }), 1, 1)
 
-    await deleteNotebook(notebook.id)
+    await deleteSpace(space.id)
 
-    expect(await db.notebooks.get(notebook.id)).toBeUndefined()
-    expect(await db.pages.where('notebookId').equals(notebook.id).count()).toBe(0)
+    expect(await db.spaces.get(space.id)).toBeUndefined()
+    expect(await db.pages.where('spaceId').equals(space.id).count()).toBe(0)
     expect(await db.attachments.where('pageId').equals(page.id).count()).toBe(0)
   })
 
-  it('listNotebooks normaliza archived=false en registros antiguos', async () => {
-    const notebook = await createNotebook('Legacy')
-    await db.notebooks.update(notebook.id, { archived: undefined as unknown as boolean })
+  it('listSpaces normaliza archived=false en registros antiguos', async () => {
+    const space = await createSpace('Legacy')
+    await db.spaces.update(space.id, { archived: undefined as unknown as boolean })
 
-    const listed = await listNotebooks()
-    expect(listed.find((item) => item.id === notebook.id)?.archived).toBe(false)
+    const listed = await listSpaces()
+    expect(listed.find((item) => item.id === space.id)?.archived).toBe(false)
   })
 
   it('exportBackupPayload e import replace restauran el estado completo', async () => {
-    const notebook = await createNotebook('Backup')
-    const page = await createPage(notebook.id, 'Pagina backup')
+    const space = await createSpace('Backup')
+    const page = await createPage(space.id, 'Pagina backup')
     await updatePage({ ...page, title: 'Actualizada', content: 'Texto', tags: ['tag'] })
-    await updateNotebook({ ...notebook, title: 'Backup renombrado', pinned: true })
+    await updateSpace({ ...space, title: 'Backup renombrado', pinned: true })
 
     const user = await ensureUser()
     await updateUser({
@@ -214,42 +214,82 @@ describe('persistencia (Dexie / IndexedDB)', () => {
     await importBackupPayloadWithMode(snapshot, 'replace')
 
     expect(await db.users.count()).toBe(1)
-    expect(await db.notebooks.count()).toBe(1)
+    expect(await db.spaces.count()).toBe(1)
     expect(await db.pages.count()).toBe(2)
 
-    const restoredNotebook = (await listNotebooks())[0]
-    expect(restoredNotebook?.title).toBe('Backup renombrado')
-    expect(restoredNotebook?.pinned).toBe(true)
+    const restoredSpace = (await listSpaces())[0]
+    expect(restoredSpace?.title).toBe('Backup renombrado')
+    expect(restoredSpace?.pinned).toBe(true)
 
-    const restoredPages = await listPagesByNotebook(restoredNotebook!.id)
+    const restoredPages = await listPagesBySpace(restoredSpace!.id)
     const restoredPage = restoredPages.find((item) => item.title === 'Actualizada')
     expect(restoredPage?.content).toBe('Texto')
     expect(restoredPage?.tags).toEqual(['tag'])
   })
 
+  it('import acepta backup legacy con notebooks y notebookId', async () => {
+    const legacyPayload = {
+      version: 1,
+      exportedAt: Date.now(),
+      users: [],
+      notebooks: [
+        {
+          id: 'legacy-space-1',
+          title: 'enc:v1:legacy',
+          color: '#4f46e5',
+          pinned: false,
+          archived: false,
+          bookmarkPageId: 'legacy-page-1',
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      ],
+      pages: [
+        {
+          id: 'legacy-page-1',
+          notebookId: 'legacy-space-1',
+          title: 'enc:v1:page',
+          content: 'enc:v1:body',
+          tags: ['enc:v1:[]'],
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      ],
+      attachments: [],
+    }
+
+    await importBackupPayloadWithMode(legacyPayload as never, 'replace')
+
+    expect(await db.spaces.count()).toBe(1)
+    expect(await db.spaces.get('legacy-space-1')).toBeDefined()
+    const page = await db.pages.get('legacy-page-1')
+    expect(page?.spaceId).toBe('legacy-space-1')
+    expect((page as { notebookId?: string } | undefined)?.notebookId).toBeUndefined()
+  })
+
   it('import merge combina datos sin borrar existentes', async () => {
-    await createNotebook('Local')
+    await createSpace('Local')
     const snapshot = await exportBackupPayload()
 
     await resetDatabase()
     await unlockTestVault()
-    await createNotebook('Nueva local')
+    await createSpace('Nueva local')
     await importBackupPayloadWithMode(snapshot, 'merge')
 
-    const titles = (await listNotebooks()).map((notebook) => notebook.title)
+    const titles = (await listSpaces()).map((space) => space.title)
     expect(titles).toContain('Nueva local')
     expect(titles).toContain('Local')
-    expect(await db.notebooks.count()).toBe(2)
+    expect(await db.spaces.count()).toBe(2)
   })
 
   describe('cerrar sesion (logout / lockVault)', () => {
     it('lockVault no elimina filas de IndexedDB', async () => {
-      const notebook = await createNotebook('Tras logout')
-      await createPage(notebook.id, 'Nota')
+      const space = await createSpace('Tras logout')
+      await createPage(space.id, 'Nota')
 
       const counts = {
         users: await db.users.count(),
-        notebooks: await db.notebooks.count(),
+        spaces: await db.spaces.count(),
         pages: await db.pages.count(),
       }
 
@@ -257,13 +297,13 @@ describe('persistencia (Dexie / IndexedDB)', () => {
       expect(isVaultUnlocked()).toBe(false)
 
       expect(await db.users.count()).toBe(counts.users)
-      expect(await db.notebooks.count()).toBe(counts.notebooks)
+      expect(await db.spaces.count()).toBe(counts.spaces)
       expect(await db.pages.count()).toBe(counts.pages)
     })
 
     it('con sesion bloqueada los datos siguen cifrados en disco', async () => {
-      const notebook = await createNotebook('Bloqueada')
-      const page = await createPage(notebook.id, 'Privada')
+      const space = await createSpace('Bloqueada')
+      const page = await createPage(space.id, 'Privada')
       await updatePage({
         ...(await getPageById(page.id))!,
         content: 'Texto privado',
@@ -279,8 +319,8 @@ describe('persistencia (Dexie / IndexedDB)', () => {
     })
 
     it('tras logout y login el contenido de la nota se recupera intacto', async () => {
-      const notebook = await createNotebook('Re-login')
-      const page = await createPage(notebook.id, 'Nota')
+      const space = await createSpace('Re-login')
+      const page = await createPage(space.id, 'Nota')
       const savedHtml = '<p>Texto guardado antes de cerrar sesion</p>'
 
       await updatePage({
@@ -297,12 +337,12 @@ describe('persistencia (Dexie / IndexedDB)', () => {
       expect(restored?.title).toBe('Nota importante')
       expect(restored?.content).toBe(savedHtml)
       expect(restored?.tags).toEqual(['trabajo'])
-      expect((await listNotebooks()).find((item) => item.id === notebook.id)?.title).toBe('Re-login')
+      expect((await listSpaces()).find((item) => item.id === space.id)?.title).toBe('Re-login')
     })
 
     it('simula logout: espera cola de guardado y conserva el ultimo contenido', async () => {
-      const notebook = await createNotebook('Cola logout')
-      const page = await createPage(notebook.id, 'Borrador')
+      const space = await createSpace('Cola logout')
+      const page = await createPage(space.id, 'Borrador')
       const persist = createPagePersistChain()
 
       await updatePage({
@@ -328,8 +368,8 @@ describe('persistencia (Dexie / IndexedDB)', () => {
     })
 
     it('logout sin esperar la cola deja el contenido anterior hasta que acabe el guardado', async () => {
-      const notebook = await createNotebook('Logout prematuro')
-      const page = await createPage(notebook.id, 'Pagina')
+      const space = await createSpace('Logout prematuro')
+      const page = await createPage(space.id, 'Pagina')
       await updatePage({
         ...(await getPageById(page.id))!,
         content: 'Contenido estable',
@@ -365,8 +405,8 @@ describe('persistencia (Dexie / IndexedDB)', () => {
     })
 
     it('login post-logout con encryptExistingDataAtRest no vacia notas existentes', async () => {
-      const notebook = await createNotebook('Migracion')
-      const page = await createPage(notebook.id, 'Segura')
+      const space = await createSpace('Migracion')
+      const page = await createPage(space.id, 'Segura')
       await updatePage({
         ...(await getPageById(page.id))!,
         content: '<p>No debe perderse</p>',
@@ -378,7 +418,7 @@ describe('persistencia (Dexie / IndexedDB)', () => {
       await encryptExistingDataAtRest()
 
       expect((await getPageById(page.id))?.content).toBe('<p>No debe perderse</p>')
-      expect((await listPagesByNotebook(notebook.id)).length).toBeGreaterThanOrEqual(2)
+      expect((await listPagesBySpace(space.id)).length).toBeGreaterThanOrEqual(2)
     })
 
     it('sessionConfig del usuario persiste tras cerrar sesion', async () => {
@@ -405,8 +445,8 @@ describe('persistencia (Dexie / IndexedDB)', () => {
   })
 
   it('los datos cifrados sobreviven a cerrar y reabrir la base', async () => {
-    const notebook = await createNotebook('Reapertura')
-    const page = await createPage(notebook.id, 'Persistente')
+    const space = await createSpace('Reapertura')
+    const page = await createPage(space.id, 'Persistente')
     await updatePage({ ...page, title: 'Clave', content: 'Secreto', tags: [] })
 
     lockVault()
@@ -418,7 +458,7 @@ describe('persistencia (Dexie / IndexedDB)', () => {
     expect(reloaded?.title).toBe('Clave')
     expect(reloaded?.content).toBe('Secreto')
 
-    const notebooks = await listNotebooks()
-    expect(notebooks.find((item) => item.id === notebook.id)?.title).toBe('Reapertura')
+    const spaces = await listSpaces()
+    expect(spaces.find((item) => item.id === space.id)?.title).toBe('Reapertura')
   })
 })

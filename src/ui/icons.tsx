@@ -1,9 +1,10 @@
-export function NotebookEmptyIcon() {
+export function SpaceEmptyIcon() {
   return (
     <span className="workspace-empty-icon" aria-hidden="true">
       <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25">
-        <path d="M6 4h12a1 1 0 0 1 1 1v14l-4-2.5L11 19V5a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1z" strokeLinejoin="round" />
-        <path d="M11 5h8v12l-3-1.75" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="3" y="4" width="10" height="8" rx="1.5" />
+        <rect x="11" y="10" width="10" height="10" rx="1.5" />
+        <path d="M7 8h2M14 14h4M14 17h3" strokeLinecap="round" />
       </svg>
     </span>
   )
@@ -34,6 +35,41 @@ export function FolderIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
       <path d="M4 7h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function FileIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8l-5-5z" strokeLinejoin="round" />
+      <path d="M13 3v5h5" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      className={`tree-chevron-icon${expanded ? ' is-expanded' : ''}`}
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
     </svg>
   )
 }

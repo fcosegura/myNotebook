@@ -14,9 +14,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico'],
       manifest: {
-        name: 'Libreta Local',
-        short_name: 'Libreta',
-        description: 'Libretas y notas con almacenamiento 100% local',
+        name: 'Espacios',
+        short_name: 'Espacios',
+        description: 'Espacios y notas con almacenamiento 100% local',
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',

@@ -1,14 +1,14 @@
 import { HeaderMenuIcon } from './icons'
-import type { SearchResult } from '../features/search/search'
+import { getParsedDateFilterLabel, type SearchResult } from '../features/search/search'
 
 type AppHeaderProps = {
   actionsOpen: boolean
   commandOpen: boolean
   searchTerm: string
   lastSavedAt: number | null
-  notebooksHidden: boolean
+  spacesHidden: boolean
   canCreatePage: boolean
-  canCreateNotebook: boolean
+  canCreateSpace: boolean
   logoutPending: boolean
   forceSavePending: boolean
   pastingImage: boolean
@@ -19,12 +19,12 @@ type AppHeaderProps = {
   onToggleCommand: () => void
   onToggleActions: () => void
   onCreatePage: () => void
-  onCreateNotebook: () => void
+  onCreateSpace: () => void
   onShowBookmarks: () => void
   onExportEncryptedBackup: () => void
   onImportEncryptedBackup: () => void
   onPinChange: () => void
-  onToggleNotebooksHidden: () => void
+  onToggleSpacesHidden: () => void
   onLogout: () => void
   onOpenSearchResult: (result: SearchResult) => void
   formatLastSavedDisplay: (ts: number) => string
@@ -35,9 +35,9 @@ export function AppHeader({
   commandOpen,
   searchTerm,
   lastSavedAt,
-  notebooksHidden,
+  spacesHidden,
   canCreatePage,
-  canCreateNotebook,
+  canCreateSpace,
   logoutPending,
   forceSavePending,
   pastingImage,
@@ -48,30 +48,37 @@ export function AppHeader({
   onToggleCommand,
   onToggleActions,
   onCreatePage,
-  onCreateNotebook,
+  onCreateSpace,
   onShowBookmarks,
   onExportEncryptedBackup,
   onImportEncryptedBackup,
   onPinChange,
-  onToggleNotebooksHidden,
+  onToggleSpacesHidden,
   onLogout,
   onOpenSearchResult,
   formatLastSavedDisplay,
 }: AppHeaderProps) {
+  const dateFilterLabel = getParsedDateFilterLabel(searchTerm)
+
   return (
     <>
       <div className="app-header-block">
         <header className="app-header">
           <div className="app-header-start">
-            <h1>Libreta local</h1>
-            <label className="search-input-wrap" aria-label="Búsqueda global">
+            <h1>Espacios</h1>
+            <label className="search-input-wrap" aria-label="Búsqueda en espacios">
               <span className="search-icon" aria-hidden="true">🔎</span>
               <input
                 className="search-input"
-                placeholder="Búsqueda global inteligente..."
+                placeholder="Buscar en tus espacios…"
                 value={searchTerm}
                 onChange={(event) => onSearch(event.target.value)}
               />
+              {dateFilterLabel ? (
+                <span className="search-date-chip" title="Filtro temporal detectado">
+                  {dateFilterLabel}
+                </span>
+              ) : null}
             </label>
           </div>
           <div className="app-header-quick-actions">
@@ -80,7 +87,7 @@ export function AppHeader({
               className="header-primary-action"
               disabled={!canCreatePage}
               onClick={onCreatePage}
-              title={canCreatePage ? 'Nueva página rápida' : 'Selecciona una libreta para crear una página'}
+              title={canCreatePage ? 'Nueva página rápida' : 'Selecciona un espacio para crear una página'}
             >
               + Página
             </button>
@@ -125,8 +132,8 @@ export function AppHeader({
             <button type="button" onClick={onExportEncryptedBackup}>Exportar cifrado</button>
             <button type="button" onClick={onImportEncryptedBackup}>Importar cifrado</button>
             <button type="button" onClick={onPinChange}>Cambiar PIN</button>
-            <button type="button" onClick={onToggleNotebooksHidden}>
-              {notebooksHidden ? 'Mostrar barra de libretas' : 'Ocultar barra de libretas'}
+            <button type="button" onClick={onToggleSpacesHidden}>
+              {spacesHidden ? 'Mostrar barra de espacios' : 'Ocultar barra de espacios'}
             </button>
             <button
               type="button"
@@ -145,9 +152,9 @@ export function AppHeader({
               <strong>Crear página</strong>
               <span>Abre una nota nueva y lista para escribir.</span>
             </button>
-            <button type="button" disabled={!canCreateNotebook} onClick={onCreateNotebook}>
-              <strong>Crear libreta</strong>
-              <span>{canCreateNotebook ? 'Organiza un nuevo espacio de notas.' : 'Cambia a Activas para crear libretas.'}</span>
+            <button type="button" disabled={!canCreateSpace} onClick={onCreateSpace}>
+              <strong>Crear espacio</strong>
+              <span>{canCreateSpace ? 'Organiza un nuevo espacio de notas.' : 'Cambia a Activas para crear espacios.'}</span>
             </button>
             <button type="button" onClick={onShowBookmarks}>
               <strong>Ver favoritos</strong>
@@ -165,7 +172,7 @@ export function AppHeader({
         <section className="search-results">
           {searchResults.map((result) => (
             <button key={result.pageId} type="button" onClick={() => onOpenSearchResult(result)}>
-              <strong>{result.pageTitle}</strong> en {result.notebookTitle}
+              <strong>{result.pageTitle}</strong> en {result.spaceTitle}
               <span>{result.snippet}</span>
             </button>
           ))}

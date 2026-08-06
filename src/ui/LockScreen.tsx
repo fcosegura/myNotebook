@@ -21,7 +21,7 @@ export function LockScreen({
 }: LockScreenProps) {
   return (
     <main className="app-shell lock-screen">
-      <h1>Libreta local</h1>
+      <h1>Espacios</h1>
       <p>Tu sesion se guarda solo en este navegador.</p>
       <div className="pin-entry">
         <div
