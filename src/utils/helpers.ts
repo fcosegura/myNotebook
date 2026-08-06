@@ -1,8 +1,11 @@
-import type { Notebook } from '../storage/db'
+import type { Space } from '../storage/db'
 
-export function isNotebookArchived(notebook: Notebook): boolean {
-  return notebook.archived === true
+export function isSpaceArchived(space: Space): boolean {
+  return space.archived === true
 }
+
+/** @deprecated Use isSpaceArchived */
+export const isNotebookArchived = isSpaceArchived
 
 export function formatLastSavedDisplay(ts: number): string {
   return new Intl.DateTimeFormat('es', {

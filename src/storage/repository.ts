@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import { db, type Attachment, type Notebook, type Page, type UserLocal } from './db'
+import { db, type Attachment, type Page, type Space, type UserLocal } from './db'
 import {
   attachmentFromExport,
   attachmentToExport,
@@ -16,7 +16,7 @@ import {
   unlockVaultWithPin,
 } from '../features/session/vault'
 
-const DEFAULT_NOTEBOOK_COLOR = '#4f46e5'
+const DEFAULT_SPACE_COLOR = '#4f46e5'
 const USER_ID = 'local-user'
 
 export async function ensureUser(): Promise<UserLocal> {
@@ -39,25 +39,25 @@ export async function updateUser(user: UserLocal): Promise<void> {
   await db.users.put(user)
 }
 
-export async function listNotebooks(): Promise<Notebook[]> {
-  const notebooks = await db.notebooks.orderBy('updatedAt').reverse().toArray()
-  const withArchived = notebooks.map((notebook) => ({
-    ...notebook,
-    archived: notebook.archived === true,
+export async function listSpaces(): Promise<Space[]> {
+  const spaces = await db.spaces.orderBy('updatedAt').reverse().toArray()
+  const withArchived = spaces.map((space) => ({
+    ...space,
+    archived: space.archived === true,
   }))
   if (!isVaultUnlocked()) {
     return withArchived
   }
   return Promise.all(
-    withArchived.map(async (notebook) => ({
-      ...notebook,
-      title: await decryptField(notebook.title),
+    withArchived.map(async (space) => ({
+      ...space,
+      title: await decryptField(space.title),
     })),
   )
 }
 
-export async function listPagesByNotebook(notebookId: string): Promise<Page[]> {
-  const pages = await db.pages.where('notebookId').equals(notebookId).sortBy('updatedAt')
+export async function listPagesBySpace(spaceId: string): Promise<Page[]> {
+  const pages = await db.pages.where('spaceId').equals(spaceId).sortBy('updatedAt')
   if (!isVaultUnlocked()) {
     return pages
   }
@@ -100,45 +100,45 @@ export async function listAttachmentsByPage(pageId: string): Promise<Attachment[
   return Promise.all(attachments.map(decryptAttachmentSafely))
 }
 
-export async function createNotebook(title: string): Promise<Notebook> {
+export async function createSpace(title: string): Promise<Space> {
   const now = Date.now()
-  const plainTitle = title.trim() || 'Nueva libreta'
-  const notebook: Notebook = {
+  const plainTitle = title.trim() || 'Nuevo espacio'
+  const space: Space = {
     id: uuidv4(),
     title: await encryptField(plainTitle),
-    color: DEFAULT_NOTEBOOK_COLOR,
+    color: DEFAULT_SPACE_COLOR,
     pinned: false,
     archived: false,
     bookmarkPageId: null,
     createdAt: now,
     updatedAt: now,
   }
-  await db.notebooks.add(notebook)
+  await db.spaces.add(space)
 
-  const page = await createPage(notebook.id, 'Primera pagina')
-  notebook.bookmarkPageId = page.id
-  await db.notebooks.put(notebook)
+  const page = await createPage(space.id, 'Primera pagina')
+  space.bookmarkPageId = page.id
+  await db.spaces.put(space)
 
-  return notebook
+  return space
 }
 
-export async function updateNotebook(notebook: Notebook): Promise<void> {
-  const encryptedNotebook: Notebook = {
-    ...notebook,
-    title: await encryptField(notebook.title),
+export async function updateSpace(space: Space): Promise<void> {
+  const encryptedSpace: Space = {
+    ...space,
+    title: await encryptField(space.title),
     updatedAt: Date.now(),
   }
-  await db.notebooks.put(encryptedNotebook)
+  await db.spaces.put(encryptedSpace)
 }
 
-export async function createPage(notebookId: string, title: string): Promise<Page> {
+export async function createPage(spaceId: string, title: string): Promise<Page> {
   const now = Date.now()
   const encryptedTitle = await encryptField(title.trim() || 'Nueva pagina')
   const encryptedContent = await encryptField('')
   const encryptedTags = await encryptField(JSON.stringify([]))
   const page: Page = {
     id: uuidv4(),
-    notebookId,
+    spaceId,
     title: encryptedTitle,
     content: encryptedContent,
     tags: [encryptedTags],
@@ -146,7 +146,7 @@ export async function createPage(notebookId: string, title: string): Promise<Pag
     updatedAt: now,
   }
   await db.pages.add(page)
-  await db.notebooks.update(notebookId, { updatedAt: now })
+  await db.spaces.update(spaceId, { updatedAt: now })
   return page
 }
 
@@ -168,17 +168,17 @@ export async function updatePage(page: Page, options: UpdatePageOptions = {}): P
   }
   await db.pages.put(encryptedPage)
   if (touchUpdatedAt) {
-    await db.notebooks.update(page.notebookId, { updatedAt: encryptedPage.updatedAt })
+    await db.spaces.update(page.spaceId, { updatedAt: encryptedPage.updatedAt })
   }
 }
 
 export async function movePageBefore(
-  notebookId: string,
+  spaceId: string,
   pageId: string,
   beforePageId: string | null,
 ): Promise<void> {
-  await db.transaction('rw', db.pages, db.notebooks, async () => {
-    const pages = await db.pages.where('notebookId').equals(notebookId).sortBy('updatedAt')
+  await db.transaction('rw', db.pages, db.spaces, async () => {
+    const pages = await db.pages.where('spaceId').equals(spaceId).sortBy('updatedAt')
     const movingPage = pages.find((page) => page.id === pageId)
     if (!movingPage) {
       return
@@ -200,7 +200,7 @@ export async function movePageBefore(
     }
 
     await db.pages.bulkPut(reordered)
-    await db.notebooks.update(notebookId, { updatedAt: base + reordered.length })
+    await db.spaces.update(spaceId, { updatedAt: base + reordered.length })
   })
 }
 
@@ -236,40 +236,40 @@ export async function deleteAttachment(attachmentId: string): Promise<void> {
 }
 
 export async function deletePage(pageId: string): Promise<void> {
-  await db.transaction('rw', db.pages, db.attachments, db.notebooks, async () => {
+  await db.transaction('rw', db.pages, db.attachments, db.spaces, async () => {
     const page = await db.pages.get(pageId)
     if (!page) {
       return
     }
-    const notebook = await db.notebooks.get(page.notebookId)
+    const space = await db.spaces.get(page.spaceId)
 
     await db.attachments.where('pageId').equals(pageId).delete()
     await db.pages.delete(pageId)
-    await db.notebooks.update(page.notebookId, {
+    await db.spaces.update(page.spaceId, {
       updatedAt: Date.now(),
-      bookmarkPageId: notebook?.bookmarkPageId === pageId ? null : notebook?.bookmarkPageId ?? null,
+      bookmarkPageId: space?.bookmarkPageId === pageId ? null : space?.bookmarkPageId ?? null,
     })
   })
 }
 
-export async function deleteNotebook(notebookId: string): Promise<void> {
-  await db.transaction('rw', db.notebooks, db.pages, db.attachments, async () => {
-    const pages = await db.pages.where('notebookId').equals(notebookId).toArray()
+export async function deleteSpace(spaceId: string): Promise<void> {
+  await db.transaction('rw', db.spaces, db.pages, db.attachments, async () => {
+    const pages = await db.pages.where('spaceId').equals(spaceId).toArray()
     const pageIds = pages.map((page) => page.id)
 
     for (const pageId of pageIds) {
       await db.attachments.where('pageId').equals(pageId).delete()
     }
 
-    await db.pages.where('notebookId').equals(notebookId).delete()
-    await db.notebooks.delete(notebookId)
+    await db.pages.where('spaceId').equals(spaceId).delete()
+    await db.spaces.delete(spaceId)
   })
 }
 
 export async function exportBackupPayload(): Promise<BackupPayload> {
-  const [users, notebooks, pages, attachments] = await Promise.all([
+  const [users, spaces, pages, attachments] = await Promise.all([
     db.users.toArray(),
-    db.notebooks.toArray(),
+    db.spaces.toArray(),
     db.pages.toArray(),
     db.attachments.toArray(),
   ])
@@ -280,7 +280,7 @@ export async function exportBackupPayload(): Promise<BackupPayload> {
     version: 1,
     exportedAt: Date.now(),
     users,
-    notebooks,
+    spaces,
     pages,
     attachments: attachmentExports,
   }
@@ -294,26 +294,50 @@ export async function importBackupPayloadWithMode(
   payload: BackupPayload,
   mode: 'replace' | 'merge',
 ): Promise<void> {
-  await db.transaction('rw', db.users, db.notebooks, db.pages, db.attachments, async () => {
+  const spaces = normalizeBackupSpaces(payload)
+  const pages = normalizeBackupPages(payload.pages)
+
+  await db.transaction('rw', db.users, db.spaces, db.pages, db.attachments, async () => {
     if (mode === 'replace') {
-      await Promise.all([db.users.clear(), db.notebooks.clear(), db.pages.clear(), db.attachments.clear()])
+      await Promise.all([db.users.clear(), db.spaces.clear(), db.pages.clear(), db.attachments.clear()])
     }
 
     if (payload.users.length > 0) {
       await db.users.bulkPut(payload.users)
     }
-    if (payload.notebooks.length > 0) {
-      const normalizedNotebooks = payload.notebooks.map((notebook) => ({
-        ...notebook,
-        archived: notebook.archived === true,
-      }))
-      await db.notebooks.bulkPut(normalizedNotebooks)
+    if (spaces.length > 0) {
+      await db.spaces.bulkPut(spaces)
     }
-    if (payload.pages.length > 0) {
-      await db.pages.bulkPut(payload.pages)
+    if (pages.length > 0) {
+      await db.pages.bulkPut(pages)
     }
     if (payload.attachments.length > 0) {
       await db.attachments.bulkPut(payload.attachments.map((attachment) => attachmentFromExport(attachment)))
+    }
+  })
+}
+
+function normalizeBackupSpaces(payload: BackupPayload): Space[] {
+  const rawSpaces = payload.spaces ?? payload.notebooks ?? []
+  return rawSpaces.map((space) => ({
+    ...space,
+    archived: space.archived === true,
+  }))
+}
+
+function normalizeBackupPages(
+  pages: Array<Page & { notebookId?: string }>,
+): Page[] {
+  return pages.map((page) => {
+    const spaceId = page.spaceId || page.notebookId
+    if (!spaceId) {
+      throw new Error('Pagina de backup sin spaceId/notebookId.')
+    }
+    const rest = { ...page } as Page & { notebookId?: string }
+    delete rest.notebookId
+    return {
+      ...rest,
+      spaceId,
     }
   })
 }
@@ -326,24 +350,24 @@ export async function encryptExistingDataAtRest(): Promise<void> {
   // Read + Web Crypto fuera de la transaccion IndexedDB: si await encrypt* ocurre
   // dentro de db.transaction(), la transaccion se puede cerrar antes del bulkPut
   // ("Transaction committed too early", ver Dexie docs).
-  const [notebooks, pages, attachments] = await Promise.all([
-    db.notebooks.toArray(),
+  const [spaces, pages, attachments] = await Promise.all([
+    db.spaces.toArray(),
     db.pages.toArray(),
     db.attachments.toArray(),
   ])
 
-  const notebookUpdates = await Promise.all(
-    notebooks.map(async (notebook) => {
-      if (isEncryptedField(notebook.title)) {
+  const spaceUpdates = await Promise.all(
+    spaces.map(async (space) => {
+      if (isEncryptedField(space.title)) {
         return null
       }
       return {
-        ...notebook,
-        title: await encryptField(notebook.title),
+        ...space,
+        title: await encryptField(space.title),
       }
     }),
   )
-  const notebooksToWrite = notebookUpdates.filter((notebook): notebook is Notebook => notebook !== null)
+  const spacesToWrite = spaceUpdates.filter((space): space is Space => space !== null)
 
   const pageUpdates = await Promise.all(
     pages.map(async (page) => {
@@ -385,16 +409,16 @@ export async function encryptExistingDataAtRest(): Promise<void> {
   )
 
   if (
-    notebooksToWrite.length === 0 &&
+    spacesToWrite.length === 0 &&
     pagesToWrite.length === 0 &&
     attachmentsToWrite.length === 0
   ) {
     return
   }
 
-  await db.transaction('rw', db.notebooks, db.pages, db.attachments, async () => {
-    if (notebooksToWrite.length > 0) {
-      await db.notebooks.bulkPut(notebooksToWrite)
+  await db.transaction('rw', db.spaces, db.pages, db.attachments, async () => {
+    if (spacesToWrite.length > 0) {
+      await db.spaces.bulkPut(spacesToWrite)
     }
     if (pagesToWrite.length > 0) {
       await db.pages.bulkPut(pagesToWrite)
@@ -417,16 +441,16 @@ export async function rotateEncryptionPin(
     throw new Error('Debes desbloquear la sesion antes de cambiar el PIN.')
   }
 
-  const [notebooks, pages, attachments] = await Promise.all([
-    db.notebooks.toArray(),
+  const [spaces, pages, attachments] = await Promise.all([
+    db.spaces.toArray(),
     db.pages.toArray(),
     db.attachments.toArray(),
   ])
 
-  const plainNotebooks = await Promise.all(
-    notebooks.map(async (notebook) => ({
-      ...notebook,
-      title: await decryptField(notebook.title),
+  const plainSpaces = await Promise.all(
+    spaces.map(async (space) => ({
+      ...space,
+      title: await decryptField(space.title),
     })),
   )
   const plainPages = await Promise.all(
@@ -451,10 +475,10 @@ export async function rotateEncryptionPin(
   await unlockVaultWithPin(newPin, newSalt, newIterations)
 
   try {
-    const encryptedNotebooks = await Promise.all(
-      plainNotebooks.map(async (notebook) => ({
-        ...notebook,
-        title: await encryptField(notebook.title),
+    const encryptedSpaces = await Promise.all(
+      plainSpaces.map(async (space) => ({
+        ...space,
+        title: await encryptField(space.title),
       })),
     )
     const encryptedPages = await Promise.all(
@@ -472,8 +496,8 @@ export async function rotateEncryptionPin(
       })),
     )
 
-    await db.transaction('rw', db.notebooks, db.pages, db.attachments, async () => {
-      await db.notebooks.bulkPut(encryptedNotebooks)
+    await db.transaction('rw', db.spaces, db.pages, db.attachments, async () => {
+      await db.spaces.bulkPut(encryptedSpaces)
       await db.pages.bulkPut(encryptedPages)
       await db.attachments.bulkPut(encryptedAttachments)
     })

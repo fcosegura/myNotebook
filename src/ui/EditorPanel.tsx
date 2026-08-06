@@ -1,6 +1,6 @@
 import type { ClipboardEvent, FormEvent, MouseEvent, RefObject } from 'react'
 import type { Attachment, Page } from '../storage/db'
-import { CloudSaveIcon, ListBulletIcon, ListNumberIcon, NotebookEmptyIcon, PageEmptyIcon, QuoteIcon, RedoIcon, UndoIcon } from './icons'
+import { CloudSaveIcon, ListBulletIcon, ListNumberIcon, SpaceEmptyIcon, PageEmptyIcon, QuoteIcon, RedoIcon, UndoIcon } from './icons'
 import { AttachmentsPanel } from './AttachmentsPanel'
 
 type EditorCommand = 'bold' | 'italic' | 'insertUnorderedList' | 'insertOrderedList' | 'underline' | 'strikeThrough' | 'foreColor'
@@ -17,8 +17,8 @@ type EditorFormatState = {
 }
 
 type EditorPanelProps = {
-  selectedNotebookId: string | null
-  selectedNotebookTitle: string | null
+  selectedSpaceId: string | null
+  selectedSpaceTitle: string | null
   selectedPage: Page | null
   selectedPageAttachments: Attachment[]
   readOnly: boolean
@@ -34,7 +34,7 @@ type EditorPanelProps = {
   saveStatusLabel: string
   canMoveToPreviousPage: boolean
   canMoveToNextPage: boolean
-  onCreateNotebook: () => void
+  onCreateSpace: () => void
   onCreatePage: () => void
   onShowBookmarks: () => void
   onMovePage: () => void
@@ -64,8 +64,8 @@ type EditorPanelProps = {
 }
 
 export function EditorPanel({
-  selectedNotebookId,
-  selectedNotebookTitle,
+  selectedSpaceId,
+  selectedSpaceTitle,
   selectedPage,
   selectedPageAttachments,
   readOnly,
@@ -81,7 +81,7 @@ export function EditorPanel({
   saveStatusLabel,
   canMoveToPreviousPage,
   canMoveToNextPage,
-  onCreateNotebook,
+  onCreateSpace,
   onCreatePage,
   onShowBookmarks,
   onMovePage,
@@ -112,22 +112,22 @@ export function EditorPanel({
   return (
     <section className="workspace-panel">
       <article className="column editor master-detail-main">
-        {!selectedNotebookId ? (
+        {!selectedSpaceId ? (
           <div className="workspace-empty-state" role="status">
-            <NotebookEmptyIcon />
+            <SpaceEmptyIcon />
             <h2>Tu espacio está listo para moverse.</h2>
             <p className="workspace-empty-text">
-              Selecciona una libreta, crea una nueva o salta a tus favoritas.
+              Selecciona un espacio, crea uno nuevo o salta a tus favoritas.
             </p>
             <div className="workspace-empty-actions">
-              <button type="button" className="primary" onClick={onCreateNotebook}>Crear libreta</button>
+              <button type="button" className="primary" onClick={onCreateSpace}>Crear espacio</button>
               <button type="button" onClick={onShowBookmarks}>Ver favoritas</button>
             </div>
           </div>
         ) : !selectedPage ? (
           <div className="workspace-empty-state" role="status">
             <PageEmptyIcon />
-            <h2>{selectedNotebookTitle ?? 'Libreta'} está esperando una idea.</h2>
+            <h2>{selectedSpaceTitle ?? 'Espacio'} está esperando una idea.</h2>
             <p className="workspace-empty-text">Crea una página rápida y empieza a escribir sin pasar por formularios.</p>
             <div className="workspace-empty-actions">
               <button type="button" className="primary" onClick={onCreatePage}>Crear primera página</button>
@@ -137,7 +137,7 @@ export function EditorPanel({
         ) : (
           <>
             <div className="editor-context-row">
-              <span className="editor-context-notebook">📒 {selectedNotebookTitle ?? 'Libreta'}</span>
+              <span className="editor-context-notebook">📒 {selectedSpaceTitle ?? 'Espacio'}</span>
               {readOnly ? <span className="editor-readonly-badge">Archivo · solo lectura</span> : null}
               <div className="editor-context-actions" aria-label="Acciones de página">
                 <button type="button" onClick={onSelectPreviousPage} disabled={!canMoveToPreviousPage} title="Página anterior">‹</button>

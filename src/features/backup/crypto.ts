@@ -1,4 +1,4 @@
-import type { Attachment, Notebook, Page, UserLocal } from '../../storage/db'
+import type { Attachment, Page, Space, UserLocal } from '../../storage/db'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -17,8 +17,11 @@ export type BackupPayload = {
   version: number
   exportedAt: number
   users: UserLocal[]
-  notebooks: Notebook[]
-  pages: Page[]
+  /** Current format */
+  spaces?: Space[]
+  /** Legacy format from pre-Spaces backups */
+  notebooks?: Space[]
+  pages: Array<Page & { notebookId?: string }>
   attachments: AttachmentExport[]
 }
 
@@ -123,10 +126,11 @@ export function attachmentFromExport(attachment: AttachmentExport): Attachment {
 }
 
 function validatePayload(payload: BackupPayload): void {
+  const hasSpaces = Array.isArray(payload.spaces) || Array.isArray(payload.notebooks)
   if (
     payload.version !== VERSION ||
     !Array.isArray(payload.users) ||
-    !Array.isArray(payload.notebooks) ||
+    !hasSpaces ||
     !Array.isArray(payload.pages) ||
     !Array.isArray(payload.attachments)
   ) {

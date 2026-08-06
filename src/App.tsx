@@ -9,14 +9,13 @@ import {
   type MouseEvent,
 } from 'react'
 import './App.css'
-import type MiniSearch from 'minisearch'
-import type { Attachment, Notebook, Page, UserLocal } from './storage/db'
+import type { Attachment, Space, Page, UserLocal } from './storage/db'
 import { parseEncryptedBackup, serializeEncryptedBackup } from './features/backup/crypto'
 import {
   addAttachment,
-  createNotebook,
+  createSpace,
   createPage,
-  deleteNotebook,
+  deleteSpace,
   deletePage,
   deleteAttachment,
   ensureUser,
@@ -29,14 +28,19 @@ import {
   listAttachmentsByPage,
   listAllAttachments,
   listAllPages,
-  listNotebooks,
-  listPagesByNotebook,
+  listSpaces,
+  listPagesBySpace,
   movePageBefore,
-  updateNotebook,
+  updateSpace,
   updatePage,
   updateUser,
 } from './storage/repository'
-import { buildSearchIndex, querySearch, type SearchResult } from './features/search/search'
+import {
+  buildSearchIndex,
+  clearSearchIndexCache,
+  querySearch,
+  type SearchResult,
+} from './features/search/search'
 import { createSalt, hashPin } from './features/session/session'
 import { lockVault, unlockVaultWithPin } from './features/session/vault'
 import { AppHeader } from './ui/AppHeader'
@@ -53,7 +57,7 @@ import { useAppDialogs } from './ui/hooks/useAppDialogs'
 import { useImageModal } from './ui/hooks/useImageModal'
 import { useInactivityLock } from './ui/hooks/useInactivityLock'
 import { useSidebarState } from './ui/hooks/useSidebarState'
-import { isNotebookArchived, formatLastSavedDisplay } from './utils/helpers'
+import { isSpaceArchived, formatLastSavedDisplay } from './utils/helpers'
 import {
   appendImageReferenceToContent,
   blockquoteContainingRange,
@@ -120,12 +124,12 @@ function App() {
   const [unlockBlockedUntil, setUnlockBlockedUntil] = useState(0)
   const submitLockScreenRef = useRef<() => void>(() => {})
 
-  const [notebooks, setNotebooks] = useState<Notebook[]>([])
+  const [spaces, setSpaces] = useState<Space[]>([])
   const [pages, setPages] = useState<Page[]>([])
   const [allPages, setAllPages] = useState<Page[]>([])
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
-  const [selectedNotebookId, setSelectedNotebookId] = useState<string | null>(null)
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null)
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null)
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -162,26 +166,26 @@ function App() {
     closeAppDialog,
   } = useAppDialogs()
   const {
-    notebooksHidden,
-    notebookMenuId,
+    spacesHidden,
+    spaceMenuId,
     pageMenuId,
     sidebarView,
     sidebarPanelMode,
-    notebookSidebarMode,
-    notebookSidebarModeRef,
-    notebooksCollapsed,
-    setNotebooksHidden,
-    setNotebookMenuId,
+    spaceSidebarMode,
+    spaceSidebarModeRef,
+    spacesCollapsed,
+    setSpacesHidden,
+    setSpaceMenuId,
     setPageMenuId,
     setSidebarView,
     setSidebarPanelMode,
-    setNotebookSidebarMode,
-    setNotebooksCollapsed,
-    toggleBookmarkNotebookExpanded,
-    isBookmarkNotebookExpanded,
-    toggleLibraryNotebookExpanded,
-    isLibraryNotebookExpanded,
-    setLibraryNotebookExpanded,
+    setSpaceSidebarMode,
+    setSpacesCollapsed,
+    toggleBookmarkSpaceExpanded,
+    isBookmarkSpaceExpanded,
+    toggleLibrarySpaceExpanded,
+    isLibrarySpaceExpanded,
+    setLibrarySpaceExpanded,
   } = useSidebarState()
   const {
     imageModalAttachment,
@@ -208,21 +212,21 @@ function App() {
   const lastSyncedEditorHtmlRef = useRef<string>('')
   /** Evita pisar el DOM del editor con `selectedPage` desactualizado al re-renderizar la misma pagina. */
   const editorBoundPageIdRef = useRef<string | null>(null)
-  const selectedNotebookIdRef = useRef<string | null>(null)
+  const selectedSpaceIdRef = useRef<string | null>(null)
   const unlockedRef = useRef(unlocked)
   const markDataSavedRef = useRef<() => void>(() => {})
-  const refreshNotebooksRef = useRef<(options?: { preferNotebookId?: string | null }) => Promise<void>>(
+  const refreshSpacesRef = useRef<(options?: { preferSpaceId?: string | null }) => Promise<void>>(
     async () => {},
   )
   const pagePersistChainRef = useRef(Promise.resolve())
 
   useEffect(() => {
     void bootstrap()
-  }, [setNotebookMenuId, setPageMenuId])
+  }, [setSpaceMenuId, setPageMenuId])
 
   useEffect(() => {
-    selectedNotebookIdRef.current = selectedNotebookId
-  }, [selectedNotebookId])
+    selectedSpaceIdRef.current = selectedSpaceId
+  }, [selectedSpaceId])
 
   function markDataSaved() {
     setLastSavedAt(Date.now())
@@ -236,7 +240,7 @@ function App() {
 
   useEffect(() => {
     function handleGlobalClick() {
-      setNotebookMenuId(null)
+      setSpaceMenuId(null)
       setPageMenuId(null)
       setFormatMenuOpen(false)
     }
@@ -244,7 +248,7 @@ function App() {
     return () => {
       window.removeEventListener('click', handleGlobalClick)
     }
-  }, [setNotebookMenuId, setPageMenuId])
+  }, [setSpaceMenuId, setPageMenuId])
 
   const handleAutoLock = useCallback(() => {
     lockVault()
@@ -261,19 +265,19 @@ function App() {
     onAutoLock: handleAutoLock,
   })
 
-  const selectedNotebook = useMemo(
-    () => notebooks.find((notebook) => notebook.id === selectedNotebookId) ?? null,
-    [notebooks, selectedNotebookId],
+  const selectedSpace = useMemo(
+    () => spaces.find((space) => space.id === selectedSpaceId) ?? null,
+    [spaces, selectedSpaceId],
   )
 
-  const selectedNotebookReadOnly = selectedNotebook ? isNotebookArchived(selectedNotebook) : false
+  const selectedSpaceReadOnly = selectedSpace ? isSpaceArchived(selectedSpace) : false
 
-  const sidebarNotebooks = useMemo(
+  const sidebarSpaces = useMemo(
     () =>
-      notebooks.filter((notebook) =>
-        notebookSidebarMode === 'archived' ? isNotebookArchived(notebook) : !isNotebookArchived(notebook),
+      spaces.filter((space) =>
+        spaceSidebarMode === 'archived' ? isSpaceArchived(space) : !isSpaceArchived(space),
       ),
-    [notebooks, notebookSidebarMode],
+    [spaces, spaceSidebarMode],
   )
 
   const selectedPage = useMemo(
@@ -337,29 +341,29 @@ function App() {
   const isCurrentPageBookmarked = Boolean(selectedPage?.tags.includes(BOOKMARK_TAG))
 
   const bookmarkTree = useMemo(() => {
-    const notebookById = new Map(notebooks.map((notebook) => [notebook.id, notebook]))
-    const grouped = new Map<string, { notebook: Notebook; pages: Page[] }>()
+    const spaceById = new Map(spaces.map((space) => [space.id, space]))
+    const grouped = new Map<string, { space: Space; pages: Page[] }>()
 
     for (const page of allPages) {
       if (!isPageBookmarked(page)) {
         continue
       }
-      const notebook = notebookById.get(page.notebookId)
-      if (!notebook) {
+      const space = spaceById.get(page.spaceId)
+      if (!space) {
         continue
       }
-      const entry = grouped.get(notebook.id) ?? { notebook, pages: [] }
+      const entry = grouped.get(space.id) ?? { space, pages: [] }
       entry.pages.push(page)
-      grouped.set(notebook.id, entry)
+      grouped.set(space.id, entry)
     }
 
     return Array.from(grouped.values())
-      .map(({ notebook, pages }) => ({
-        notebook,
+      .map(({ space, pages }) => ({
+        space,
         pages: pages.sort((a, b) => a.title.localeCompare(b.title, 'es')),
       }))
-      .sort((a, b) => a.notebook.title.localeCompare(b.notebook.title, 'es'))
-  }, [allPages, notebooks])
+      .sort((a, b) => a.space.title.localeCompare(b.space.title, 'es'))
+  }, [allPages, spaces])
 
 
   async function refreshAllPages() {
@@ -374,60 +378,60 @@ function App() {
     setUnlocked(false)
   }
 
-  async function clearWorkspaceWithoutNotebook() {
+  async function clearWorkspaceWithoutSpace() {
     setSelectedPageId(null)
     setPages([])
     setAttachments(await listAllAttachments())
     await refreshAllPages()
   }
 
-  async function refreshNotebooks(options?: { preferNotebookId?: string | null }) {
-    const allNotebooks = await listNotebooks()
-    setNotebooks(allNotebooks)
+  async function refreshSpaces(options?: { preferSpaceId?: string | null }) {
+    const allSpaces = await listSpaces()
+    setSpaces(allSpaces)
 
-    if (allNotebooks.length === 0) {
-      const notebook = await createNotebook('Mi libreta')
+    if (allSpaces.length === 0) {
+      const space = await createSpace('Mi espacio')
       markDataSaved()
-      setNotebookSidebarMode('active')
-      const refreshed = await listNotebooks()
-      setNotebooks(refreshed)
-      setSelectedNotebookId(notebook.id)
-      await refreshPages(notebook.id)
+      setSpaceSidebarMode('active')
+      const refreshed = await listSpaces()
+      setSpaces(refreshed)
+      setSelectedSpaceId(space.id)
+      await refreshPages(space.id)
       return
     }
 
-    const mode = notebookSidebarModeRef.current
-    const pool = allNotebooks.filter((notebook) =>
-      mode === 'archived' ? isNotebookArchived(notebook) : !isNotebookArchived(notebook),
+    const mode = spaceSidebarModeRef.current
+    const pool = allSpaces.filter((space) =>
+      mode === 'archived' ? isSpaceArchived(space) : !isSpaceArchived(space),
     )
 
-    const preferred = options?.preferNotebookId
-    const preferredInPool = preferred && pool.some((notebook) => notebook.id === preferred)
+    const preferred = options?.preferSpaceId
+    const preferredInPool = preferred && pool.some((space) => space.id === preferred)
 
     const keepSelection =
-      selectedNotebookId &&
-      allNotebooks.some((notebook) => notebook.id === selectedNotebookId) &&
-      pool.some((notebook) => notebook.id === selectedNotebookId)
+      selectedSpaceId &&
+      allSpaces.some((space) => space.id === selectedSpaceId) &&
+      pool.some((space) => space.id === selectedSpaceId)
 
-    const notebookId = preferredInPool
+    const spaceId = preferredInPool
       ? preferred!
       : keepSelection
-        ? selectedNotebookId!
+        ? selectedSpaceId!
         : pool[0]?.id ?? null
 
-    setSelectedNotebookId(notebookId)
-    if (notebookId) {
-      await refreshPages(notebookId)
+    setSelectedSpaceId(spaceId)
+    if (spaceId) {
+      await refreshPages(spaceId)
     } else {
-      await clearWorkspaceWithoutNotebook()
+      await clearWorkspaceWithoutSpace()
     }
     await refreshAllPages()
   }
 
-  refreshNotebooksRef.current = refreshNotebooks
+  refreshSpacesRef.current = refreshSpaces
 
-  async function refreshPages(notebookId: string) {
-    const allPages = await listPagesByNotebook(notebookId)
+  async function refreshPages(spaceId: string) {
+    const allPages = await listPagesBySpace(spaceId)
     setPages(allPages)
     const allAttachments = await listAllAttachments()
     setAttachments(allAttachments)
@@ -466,7 +470,7 @@ function App() {
             createNotebookErrorResponse(
               event.data.requestId,
               'invalid-message',
-              'El mensaje para crear la libreta no tiene el formato esperado.',
+              'El mensaje para crear el espacio no tiene el formato esperado.',
             ),
           )
         }
@@ -481,7 +485,7 @@ function App() {
             createNotebookErrorResponse(
               event.data.requestId,
               'invalid-title',
-              'El nombre de la libreta no puede estar vacío.',
+              'El nombre del espacio no puede estar vacío.',
             ),
           )
           return
@@ -493,33 +497,33 @@ function App() {
             createNotebookErrorResponse(
               event.data.requestId,
               'vault-locked',
-              'Desbloquea MyNotebook antes de crear libretas desde TaskManager.',
+              'Desbloquea MyNotebook antes de crear espacios desde TaskManager.',
             ),
           )
           return
         }
 
         try {
-          const notebook = await createNotebook(title)
-          notebookSidebarModeRef.current = 'active'
-          setNotebookSidebarMode('active')
-          await refreshNotebooksRef.current({ preferNotebookId: notebook.id })
+          const space = await createSpace(title)
+          spaceSidebarModeRef.current = 'active'
+          setSpaceSidebarMode('active')
+          await refreshSpacesRef.current({ preferSpaceId: space.id })
           markDataSavedRef.current()
           postTaskManagerResponse(
             event,
             createNotebookSuccessResponse(event.data.requestId, {
-              id: notebook.id,
+              id: space.id,
               title,
             }),
           )
         } catch (error) {
-          console.error('TaskManager notebook creation failed:', error)
+          console.error('TaskManager space creation failed:', error)
           postTaskManagerResponse(
             event,
             createNotebookErrorResponse(
               event.data.requestId,
               'create-failed',
-              'No se pudo crear la libreta en MyNotebook.',
+              'No se pudo crear el espacio en MyNotebook.',
             ),
           )
         }
@@ -530,43 +534,43 @@ function App() {
     return () => {
       window.removeEventListener('message', handleTaskManagerMessage)
     }
-  }, [notebookSidebarModeRef, setNotebookSidebarMode])
+  }, [spaceSidebarModeRef, setSpaceSidebarMode])
 
-  async function handleNotebookCreate() {
-    if (notebookSidebarModeRef.current === 'archived') {
-      setBackupStatus('Las libretas archivadas son de solo lectura. Cambia a Activas para crear una libreta.')
+  async function handleSpaceCreate() {
+    if (spaceSidebarModeRef.current === 'archived') {
+      setBackupStatus('Los espacios archivados son de solo lectura. Cambia a Activas para crear un espacio.')
       setBackupStatusType('info')
       return
     }
-    const notebookName = await requestTextDialog({
-      title: 'Nueva libreta',
-      message: 'Elige un nombre para la libreta.',
+    const spaceName = await requestTextDialog({
+      title: 'Nuevo espacio',
+      message: 'Elige un nombre para el espacio.',
       confirmLabel: 'Crear',
-      placeholder: 'Nombre de la libreta',
+      placeholder: 'Nombre del espacio',
     })
-    if (notebookName === null) {
+    if (spaceName === null) {
       return
     }
 
-    const notebook = await createNotebook(notebookName)
-    notebookSidebarModeRef.current = 'active'
-    setNotebookSidebarMode('active')
-    await refreshNotebooks({ preferNotebookId: notebook.id })
+    const space = await createSpace(spaceName)
+    spaceSidebarModeRef.current = 'active'
+    setSpaceSidebarMode('active')
+    await refreshSpaces({ preferSpaceId: space.id })
     markDataSaved()
   }
 
   async function handlePageCreate() {
-    if (!selectedNotebookId || selectedNotebookReadOnly) {
-      if (selectedNotebookReadOnly) {
-        setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+    if (!selectedSpaceId || selectedSpaceReadOnly) {
+      if (selectedSpaceReadOnly) {
+        setBackupStatus('Este espacio está archivado y es de solo lectura.')
         setBackupStatusType('info')
       }
       return
     }
-    const page = await createPage(selectedNotebookId, 'Nueva página')
+    const page = await createPage(selectedSpaceId, 'Nueva página')
     setSidebarPanelMode('library')
     setSidebarView('pages')
-    await refreshPages(selectedNotebookId)
+    await refreshPages(selectedSpaceId)
     setSelectedPageId(page.id)
     markDataSaved()
     window.setTimeout(() => {
@@ -589,9 +593,9 @@ function App() {
     if (!current) {
       return
     }
-    const notebook = notebooks.find((entry) => entry.id === current.notebookId)
-    if (notebook && isNotebookArchived(notebook)) {
-      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+    const space = spaces.find((entry) => entry.id === current.spaceId)
+    if (space && isSpaceArchived(space)) {
+      setBackupStatus('Este espacio está archivado y es de solo lectura.')
       setBackupStatusType('info')
       setPageMenuId(null)
       return
@@ -609,21 +613,21 @@ function App() {
       await updatePage({ ...fresh, tags: updatedTags }, { touchUpdatedAt: false })
       markDataSaved()
       await refreshAllPages()
-      if (selectedNotebookIdRef.current === fresh.notebookId) {
-        await refreshPages(fresh.notebookId)
+      if (selectedSpaceIdRef.current === fresh.spaceId) {
+        await refreshPages(fresh.spaceId)
       }
     })
     setPageMenuId(null)
   }
 
-  async function handleNotebookRename(notebook?: Notebook) {
-    const current = notebook ?? selectedNotebook
+  async function handleSpaceRename(space?: Space) {
+    const current = space ?? selectedSpace
     if (!current) {
       return
     }
     const nextName = await requestTextDialog({
-      title: 'Renombrar libreta',
-      message: 'Actualiza el nombre de la libreta.',
+      title: 'Renombrar espacio',
+      message: 'Actualiza el nombre del espacio.',
       confirmLabel: 'Guardar',
       placeholder: 'Nuevo nombre',
       initialValue: current.title,
@@ -631,20 +635,20 @@ function App() {
     if (nextName === null) {
       return
     }
-    const updated = { ...current, title: nextName.trim() || 'Nueva libreta' }
-    await updateNotebook(updated)
-    await refreshNotebooks()
+    const updated = { ...current, title: nextName.trim() || 'Nuevo espacio' }
+    await updateSpace(updated)
+    await refreshSpaces()
     markDataSaved()
   }
 
-  async function handleNotebookDelete(notebook?: Notebook) {
-    const current = notebook ?? selectedNotebook
+  async function handleSpaceDelete(space?: Space) {
+    const current = space ?? selectedSpace
     if (!current) {
       return
     }
     const confirmed = await requestConfirmDialog({
-      title: 'Eliminar libreta',
-      message: `Se eliminara la libreta "${current.title}" con sus paginas y adjuntos.`,
+      title: 'Eliminar espacio',
+      message: `Se eliminara el espacio "${current.title}" con sus paginas y adjuntos.`,
       confirmLabel: 'Eliminar',
       cancelLabel: 'Cancelar',
       tone: 'danger',
@@ -652,30 +656,30 @@ function App() {
     if (!confirmed) {
       return
     }
-    await deleteNotebook(current.id)
+    await deleteSpace(current.id)
     setSelectedPageId(null)
-    await refreshNotebooks()
+    await refreshSpaces()
     markDataSaved()
   }
 
-  function handleNotebookSidebarModeChange(mode: 'active' | 'archived') {
-    setNotebookSidebarMode(mode)
-    setNotebookMenuId(null)
-    void refreshNotebooks()
+  function handleSpaceSidebarModeChange(mode: 'active' | 'archived') {
+    setSpaceSidebarMode(mode)
+    setSpaceMenuId(null)
+    void refreshSpaces()
   }
 
-  async function handleNotebookArchive(notebook: Notebook) {
-    setNotebookMenuId(null)
-    await updateNotebook({ ...notebook, archived: true })
+  async function handleSpaceArchive(space: Space) {
+    setSpaceMenuId(null)
+    await updateSpace({ ...space, archived: true })
     markDataSaved()
-    await refreshNotebooks()
+    await refreshSpaces()
   }
 
-  async function handleNotebookUnarchive(notebook: Notebook) {
-    setNotebookMenuId(null)
-    await updateNotebook({ ...notebook, archived: false })
+  async function handleSpaceUnarchive(space: Space) {
+    setSpaceMenuId(null)
+    await updateSpace({ ...space, archived: false })
     markDataSaved()
-    await refreshNotebooks()
+    await refreshSpaces()
   }
 
   async function handlePageDelete(page?: Page) {
@@ -683,9 +687,9 @@ function App() {
     if (!current) {
       return
     }
-    const notebook = notebooks.find((entry) => entry.id === current.notebookId)
-    if (notebook && isNotebookArchived(notebook)) {
-      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+    const space = spaces.find((entry) => entry.id === current.spaceId)
+    if (space && isSpaceArchived(space)) {
+      setBackupStatus('Este espacio está archivado y es de solo lectura.')
       setBackupStatusType('info')
       setPageMenuId(null)
       return
@@ -701,17 +705,17 @@ function App() {
       return
     }
     await deletePage(current.id)
-    if (selectedNotebookId) {
-      await refreshPages(selectedNotebookId)
+    if (selectedSpaceId) {
+      await refreshPages(selectedSpaceId)
     }
     await refreshAllPages()
     markDataSaved()
   }
 
   function openMovePageDialog() {
-    if (!selectedPage || selectedNotebookReadOnly) {
-      if (selectedNotebookReadOnly) {
-        setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+    if (!selectedPage || selectedSpaceReadOnly) {
+      if (selectedSpaceReadOnly) {
+        setBackupStatus('Este espacio está archivado y es de solo lectura.')
         setBackupStatusType('info')
       }
       return
@@ -720,17 +724,17 @@ function App() {
   }
 
   async function handleMovePageConfirm() {
-    if (!selectedNotebookId || !selectedPage || selectedNotebookReadOnly) {
+    if (!selectedSpaceId || !selectedPage || selectedSpaceReadOnly) {
       return
     }
-    await movePageBefore(selectedNotebookId, selectedPage.id, moveBeforePageId || null)
-    await refreshPages(selectedNotebookId)
+    await movePageBefore(selectedSpaceId, selectedPage.id, moveBeforePageId || null)
+    await refreshPages(selectedSpaceId)
     closeMovePageDialog()
     markDataSaved()
   }
 
   async function handlePageFieldChange<K extends keyof Page>(key: K, value: Page[K]) {
-    if (selectedNotebookReadOnly) {
+    if (selectedSpaceReadOnly) {
       return
     }
     const pageId = selectedPage?.id
@@ -744,15 +748,15 @@ function App() {
       }
       await updatePage({ ...fresh, [key]: value })
       markDataSaved()
-      if (selectedNotebookIdRef.current === fresh.notebookId) {
-        await refreshPages(fresh.notebookId)
+      if (selectedSpaceIdRef.current === fresh.spaceId) {
+        await refreshPages(fresh.spaceId)
       }
     })
   }
 
   async function forceSaveNote() {
-    if (selectedNotebookReadOnly) {
-      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+    if (selectedSpaceReadOnly) {
+      setBackupStatus('Este espacio está archivado y es de solo lectura.')
       setBackupStatusType('info')
       return
     }
@@ -796,6 +800,7 @@ function App() {
       }
       await pagePersistChainRef.current
       lockVault()
+      clearSearchIndexCache()
       setUnlocked(false)
       setPinInput('')
       setPinError('Sesión cerrada. Ingresa tu PIN para volver a ver tus notas.')
@@ -817,7 +822,7 @@ function App() {
       if (!event.ctrlKey && !event.metaKey) {
         return
       }
-      if (selectedNotebookReadOnly) {
+      if (selectedSpaceReadOnly) {
         return
       }
       if (event.key.toLowerCase() !== 's') {
@@ -834,7 +839,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [unlocked, selectedNotebookReadOnly])
+  }, [unlocked, selectedSpaceReadOnly])
 
   useEffect(() => {
     if (!unlocked) {
@@ -884,7 +889,7 @@ function App() {
       document.removeEventListener('selectionchange', onSelectionChange)
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [unlocked, selectedPageId, selectedNotebookReadOnly])
+  }, [unlocked, selectedPageId, selectedSpaceReadOnly])
 
   async function handleSetupPin() {
     if (!user) {
@@ -908,7 +913,7 @@ function App() {
     markDataSaved()
     await unlockVaultWithPin(pinInput, salt, 100_000)
     setUser(updatedUser)
-    await refreshNotebooks()
+    await refreshSpaces()
     setPinInput('')
     setPinError('')
     setUnlockAttempts(0)
@@ -944,7 +949,7 @@ function App() {
         setBackupStatus(`No se pudo completar la migración de cifrado: ${(error as Error).message}`)
         setBackupStatusType('error')
       }
-      await refreshNotebooks()
+      await refreshSpaces()
       markDataSaved()
 
       setUnlocked(true)
@@ -1075,10 +1080,10 @@ function App() {
   }
 
   async function processImagePaste(event: ClipboardEvent<HTMLDivElement>) {
-    if (!selectedPageId || selectedNotebookReadOnly) {
-      if (selectedNotebookReadOnly) {
+    if (!selectedPageId || selectedSpaceReadOnly) {
+      if (selectedSpaceReadOnly) {
         event.preventDefault()
-        setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+        setBackupStatus('Este espacio está archivado y es de solo lectura.')
         setBackupStatusType('info')
       }
       return
@@ -1128,8 +1133,8 @@ function App() {
           lastSyncedEditorHtmlRef.current = nextContent
         }
         markDataSaved()
-        if (selectedNotebookIdRef.current === fresh.notebookId) {
-          await refreshPages(fresh.notebookId)
+        if (selectedSpaceIdRef.current === fresh.spaceId) {
+          await refreshPages(fresh.spaceId)
         }
       })
     } finally {
@@ -1211,7 +1216,7 @@ function App() {
       | 'insertOrderedList',
     value?: string,
   ) {
-    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+    if (!selectedPage || !editorRef.current || selectedSpaceReadOnly) {
       return
     }
     editorRef.current.focus()
@@ -1223,7 +1228,7 @@ function App() {
   applyEditorCommandRef.current = applyEditorCommand
 
   function applyEditorHistory(action: 'undo' | 'redo') {
-    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+    if (!selectedPage || !editorRef.current || selectedSpaceReadOnly) {
       return
     }
     editorRef.current.focus()
@@ -1233,7 +1238,7 @@ function App() {
   }
 
   function applyEditorBlockFormat(format: EditorBlockFormat) {
-    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+    if (!selectedPage || !editorRef.current || selectedSpaceReadOnly) {
       return
     }
     const tag = format === 'P' ? 'p' : format.toLowerCase()
@@ -1244,7 +1249,7 @@ function App() {
   }
 
   function applyEditorBlockquote() {
-    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+    if (!selectedPage || !editorRef.current || selectedSpaceReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -1270,7 +1275,7 @@ function App() {
   }
 
   function clearEditorFormat() {
-    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+    if (!selectedPage || !editorRef.current || selectedSpaceReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -1281,7 +1286,7 @@ function App() {
   }
 
   function insertHorizontalRule() {
-    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+    if (!selectedPage || !editorRef.current || selectedSpaceReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -1292,7 +1297,7 @@ function App() {
   }
 
   function createOrEditLink() {
-    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+    if (!selectedPage || !editorRef.current || selectedSpaceReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -1348,7 +1353,7 @@ function App() {
 
   /** Mueve el tamano del texto seleccionado N escalones en la escala (p. ej. 3 con A+ / A−). */
   function applySelectionFontSizeStep(stepDelta: number) {
-    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+    if (!selectedPage || !editorRef.current || selectedSpaceReadOnly) {
       return
     }
     const editor = editorRef.current
@@ -1434,31 +1439,23 @@ function App() {
     }
 
     void (async () => {
-      const allNotebooks = await listNotebooks()
+      const allSpaces = await listSpaces()
       const allPages = await listAllPages()
-      const index = buildSearchIndex(allNotebooks, allPages) as MiniSearch<{
-        id: string
-        notebookId: string
-        notebookTitle: string
-        pageTitle: string
-        content: string
-        tags: string
-        updatedAt: number
-      }>
+      const index = buildSearchIndex(allSpaces, allPages)
       setSearchResults(querySearch(index, term))
     })()
   }
 
   async function openSearchResult(result: SearchResult) {
-    const all = await listNotebooks()
-    const nb = all.find((notebook) => notebook.id === result.notebookId)
-    if (nb && isNotebookArchived(nb)) {
-      setNotebookSidebarMode('archived')
+    const all = await listSpaces()
+    const nb = all.find((space) => space.id === result.spaceId)
+    if (nb && isSpaceArchived(nb)) {
+      setSpaceSidebarMode('archived')
     }
-    setSelectedNotebookId(result.notebookId)
+    setSelectedSpaceId(result.spaceId)
     setSidebarPanelMode('library')
     setSidebarView('pages')
-    await refreshPages(result.notebookId)
+    await refreshPages(result.spaceId)
     setSelectedPageId(result.pageId)
   }
 
@@ -1467,23 +1464,23 @@ function App() {
     if (!target) {
       return
     }
-    const nb = notebooks.find((notebook) => notebook.id === target.notebookId)
-    if (nb && isNotebookArchived(nb)) {
-      setNotebookSidebarMode('archived')
+    const nb = spaces.find((space) => space.id === target.spaceId)
+    if (nb && isSpaceArchived(nb)) {
+      setSpaceSidebarMode('archived')
     } else {
-      setNotebookSidebarMode('active')
+      setSpaceSidebarMode('active')
     }
-    setSelectedNotebookId(target.notebookId)
+    setSelectedSpaceId(target.spaceId)
     setSidebarPanelMode('library')
     setSidebarView('pages')
-    await refreshPages(target.notebookId)
+    await refreshPages(target.spaceId)
     setSelectedPageId(target.id)
   }
 
   function showBookmarks() {
     setSidebarPanelMode('bookmarks')
-    setNotebooksHidden(false)
-    setNotebooksCollapsed(false)
+    setSpacesHidden(false)
+    setSpacesCollapsed(false)
     setActionsOpen(false)
     setCommandOpen(false)
   }
@@ -1527,14 +1524,14 @@ function App() {
 
 
   async function removeAttachment(attachmentId: string) {
-    if (selectedNotebookReadOnly) {
-      setBackupStatus('Esta libreta está archivada y es de solo lectura.')
+    if (selectedSpaceReadOnly) {
+      setBackupStatus('Este espacio está archivado y es de solo lectura.')
       setBackupStatusType('info')
       return
     }
     await deleteAttachment(attachmentId)
-    if (selectedNotebookId) {
-      await refreshPages(selectedNotebookId)
+    if (selectedSpaceId) {
+      await refreshPages(selectedSpaceId)
     }
     markDataSaved()
   }
@@ -1565,7 +1562,7 @@ function App() {
       const anchor = document.createElement('a')
       const timestamp = new Date().toISOString().replaceAll(':', '-')
       anchor.href = url
-      anchor.download = `local-notebook-${timestamp}.mynote.enc`
+      anchor.download = `local-space-${timestamp}.mynote.enc`
       anchor.click()
       URL.revokeObjectURL(url)
       setBackupStatus('Backup cifrado exportado.')
@@ -1687,9 +1684,9 @@ function App() {
           commandOpen={commandOpen}
           searchTerm={searchTerm}
           lastSavedAt={lastSavedAt}
-          notebooksHidden={notebooksHidden}
-          canCreatePage={selectedNotebookId !== null && !selectedNotebookReadOnly}
-          canCreateNotebook={notebookSidebarMode !== 'archived'}
+          spacesHidden={spacesHidden}
+          canCreatePage={selectedSpaceId !== null && !selectedSpaceReadOnly}
+          canCreateSpace={spaceSidebarMode !== 'archived'}
           logoutPending={logoutPending}
           forceSavePending={forceSavePending}
           pastingImage={pastingImage}
@@ -1706,76 +1703,76 @@ function App() {
             setCommandOpen(false)
           }}
           onCreatePage={() => void handlePageCreate()}
-          onCreateNotebook={() => void handleNotebookCreate()}
+          onCreateSpace={() => void handleSpaceCreate()}
           onShowBookmarks={showBookmarks}
           onExportEncryptedBackup={() => void handleExportEncryptedBackup()}
           onImportEncryptedBackup={() => void handleImportEncryptedBackup()}
           onPinChange={() => void handlePinChange()}
-          onToggleNotebooksHidden={() => setNotebooksHidden((value) => !value)}
+          onToggleSpacesHidden={() => setSpacesHidden((value) => !value)}
           onLogout={() => void handleLogout()}
           onOpenSearchResult={(result) => void openSearchResult(result)}
           formatLastSavedDisplay={formatLastSavedDisplay}
         />
 
-        <section className={`layout master-detail-layout${notebooksHidden ? ' sidebar-hidden' : notebooksCollapsed ? ' sidebar-collapsed' : ''}`}>
+        <section className={`layout master-detail-layout${spacesHidden ? ' sidebar-hidden' : spacesCollapsed ? ' sidebar-collapsed' : ''}`}>
           <Sidebar
-            notebooksHidden={notebooksHidden}
-            notebooksCollapsed={notebooksCollapsed}
+            spacesHidden={spacesHidden}
+            spacesCollapsed={spacesCollapsed}
             sidebarPanelMode={sidebarPanelMode}
             sidebarView={sidebarView}
-            selectedNotebookId={selectedNotebookId}
+            selectedSpaceId={selectedSpaceId}
             selectedPageId={selectedPageId}
-            selectedNotebook={selectedNotebook}
-            selectedNotebookReadOnly={selectedNotebookReadOnly}
+            selectedSpace={selectedSpace}
+            selectedSpaceReadOnly={selectedSpaceReadOnly}
             pages={pages}
-            sidebarNotebooks={sidebarNotebooks}
-            notebookSidebarMode={notebookSidebarMode}
+            sidebarSpaces={sidebarSpaces}
+            spaceSidebarMode={spaceSidebarMode}
             bookmarkTree={bookmarkTree}
-            notebookMenuId={notebookMenuId}
+            spaceMenuId={spaceMenuId}
             pageMenuId={pageMenuId}
-            onExpandNotebooks={() => setNotebooksCollapsed(false)}
-            onCollapseNotebooks={() => setNotebooksCollapsed(true)}
+            onExpandSpaces={() => setSpacesCollapsed(false)}
+            onCollapseSpaces={() => setSpacesCollapsed(true)}
             onSidebarPanelModeChange={setSidebarPanelMode}
             onSidebarViewChange={setSidebarView}
-            onNotebookSidebarModeChange={handleNotebookSidebarModeChange}
-            onNotebookCreate={handleNotebookCreate}
+            onSpaceSidebarModeChange={handleSpaceSidebarModeChange}
+            onSpaceCreate={handleSpaceCreate}
             onPageCreate={handlePageCreate}
-            onSelectNotebook={(notebookId) => {
-              if (selectedNotebookId !== notebookId) {
-                setSelectedNotebookId(notebookId)
-                setLibraryNotebookExpanded(notebookId, true)
+            onSelectSpace={(spaceId) => {
+              if (selectedSpaceId !== spaceId) {
+                setSelectedSpaceId(spaceId)
+                setLibrarySpaceExpanded(spaceId, true)
               } else {
-                toggleLibraryNotebookExpanded(notebookId)
+                toggleLibrarySpaceExpanded(spaceId)
               }
               setSidebarView('pages')
-              void refreshPages(notebookId)
+              void refreshPages(spaceId)
             }}
             onSelectPage={setSelectedPageId}
-            onToggleNotebookMenu={(notebookId) => setNotebookMenuId((value) => (value === notebookId ? null : notebookId))}
+            onToggleSpaceMenu={(spaceId) => setSpaceMenuId((value) => (value === spaceId ? null : spaceId))}
             onTogglePageMenu={(pageId) => setPageMenuId((value) => (value === pageId ? null : pageId))}
-            onNotebookRename={(notebook) => void handleNotebookRename(notebook)}
-            onNotebookArchive={(notebook) => void handleNotebookArchive(notebook)}
-            onNotebookUnarchive={(notebook) => void handleNotebookUnarchive(notebook)}
-            onNotebookDelete={(notebook) => void handleNotebookDelete(notebook)}
+            onSpaceRename={(space) => void handleSpaceRename(space)}
+            onSpaceArchive={(space) => void handleSpaceArchive(space)}
+            onSpaceUnarchive={(space) => void handleSpaceUnarchive(space)}
+            onSpaceDelete={(space) => void handleSpaceDelete(space)}
             onPageBookmark={(page) => void handlePageBookmark(page)}
             onPageMove={openMovePageDialog}
             onPageDelete={(page) => void handlePageDelete(page)}
-            onBookmarkNotebookToggle={toggleBookmarkNotebookExpanded}
-            isBookmarkNotebookExpanded={isBookmarkNotebookExpanded}
-            isLibraryNotebookExpanded={isLibraryNotebookExpanded}
+            onBookmarkSpaceToggle={toggleBookmarkSpaceExpanded}
+            isBookmarkSpaceExpanded={isBookmarkSpaceExpanded}
+            isLibrarySpaceExpanded={isLibrarySpaceExpanded}
             onOpenBookmarkPage={(pageId) => void openBookmarkPage(pageId)}
-            isNotebookArchived={isNotebookArchived}
+            isSpaceArchived={isSpaceArchived}
             isPageBookmarked={isPageBookmarked}
             formatPageUpdatedAt={formatPageUpdatedAt}
             getPagePreview={getPagePreview}
           />
 
           <EditorPanel
-            selectedNotebookId={selectedNotebookId}
-            selectedNotebookTitle={selectedNotebook?.title ?? null}
+            selectedSpaceId={selectedSpaceId}
+            selectedSpaceTitle={selectedSpace?.title ?? null}
             selectedPage={selectedPage}
             selectedPageAttachments={selectedPageAttachments}
-            readOnly={selectedNotebookReadOnly}
+            readOnly={selectedSpaceReadOnly}
             editorRef={editorRef}
             editorTitleRef={editorTitleRef}
             isCurrentPageBookmarked={isCurrentPageBookmarked}
@@ -1788,7 +1785,7 @@ function App() {
             saveStatusLabel={saveStatusLabel}
             canMoveToPreviousPage={selectedPageIndex > 0}
             canMoveToNextPage={selectedPageIndex >= 0 && selectedPageIndex < pages.length - 1}
-            onCreateNotebook={() => void handleNotebookCreate()}
+            onCreateSpace={() => void handleSpaceCreate()}
             onCreatePage={() => void handlePageCreate()}
             onShowBookmarks={showBookmarks}
             onMovePage={openMovePageDialog}
