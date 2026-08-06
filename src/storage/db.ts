@@ -13,7 +13,7 @@ export type UserLocal = {
   createdAt: number
 }
 
-export type Notebook = {
+export type Space = {
   id: string
   title: string
   color: string
@@ -24,9 +24,12 @@ export type Notebook = {
   updatedAt: number
 }
 
+/** @deprecated Use Space. Kept for backup/legacy typing. */
+export type Notebook = Space
+
 export type Page = {
   id: string
-  notebookId: string
+  spaceId: string
   title: string
   content: string
   tags: string[]
@@ -50,7 +53,7 @@ const DATABASE_NAME = 'local-notebook-db'
 
 export const db = new Dexie(DATABASE_NAME) as Dexie & {
   users: EntityTable<UserLocal, 'id'>
-  notebooks: EntityTable<Notebook, 'id'>
+  spaces: EntityTable<Space, 'id'>
   pages: EntityTable<Page, 'id'>
   attachments: EntityTable<Attachment, 'id'>
 }
@@ -73,9 +76,41 @@ db.version(2)
     await tx
       .table('notebooks')
       .toCollection()
-      .modify((row: Notebook & { archived?: boolean }) => {
+      .modify((row: Space & { archived?: boolean }) => {
         if (row.archived === undefined) {
           row.archived = false
         }
+      })
+  })
+
+db.version(3)
+  .stores({
+    users: 'id, createdAt',
+    spaces: 'id, updatedAt, title, pinned, archived',
+    notebooks: null,
+    pages: 'id, spaceId, updatedAt, title, *tags',
+    attachments: 'id, pageId, createdAt',
+  })
+  .upgrade(async (tx) => {
+    const notebooksTable = tx.table('notebooks')
+    const spacesTable = tx.table('spaces')
+    const notebooks = await notebooksTable.toArray()
+    if (notebooks.length > 0) {
+      await spacesTable.bulkPut(
+        notebooks.map((row) => ({
+          ...row,
+          archived: row.archived === true,
+        })),
+      )
+    }
+
+    await tx
+      .table('pages')
+      .toCollection()
+      .modify((row: Page & { notebookId?: string }) => {
+        if (!row.spaceId && row.notebookId) {
+          row.spaceId = row.notebookId
+        }
+        delete row.notebookId
       })
   })

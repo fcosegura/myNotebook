@@ -1,93 +1,93 @@
 import { useRef, useState } from 'react'
 
-export type SidebarView = 'notebooks' | 'pages'
+export type SidebarView = 'spaces' | 'pages'
 export type SidebarPanelMode = 'library' | 'bookmarks'
-export type NotebookSidebarMode = 'active' | 'archived'
+export type SpaceSidebarMode = 'active' | 'archived'
 
 export function useSidebarState() {
-  const [notebooksHidden, setNotebooksHidden] = useState(false)
-  const [notebookMenuId, setNotebookMenuId] = useState<string | null>(null)
+  const [spacesHidden, setSpacesHidden] = useState(false)
+  const [spaceMenuId, setSpaceMenuId] = useState<string | null>(null)
   const [pageMenuId, setPageMenuId] = useState<string | null>(null)
-  const [sidebarView, setSidebarView] = useState<SidebarView>('notebooks')
+  const [sidebarView, setSidebarView] = useState<SidebarView>('spaces')
   const [sidebarPanelMode, setSidebarPanelMode] = useState<SidebarPanelMode>('library')
-  const [bookmarkNotebooksCollapsed, setBookmarkNotebooksCollapsed] = useState<Set<string>>(new Set())
-  const [libraryNotebooksCollapsed, setLibraryNotebooksCollapsed] = useState<Set<string>>(new Set())
-  const [notebookSidebarMode, setNotebookSidebarMode] = useState<NotebookSidebarMode>('active')
-  const notebookSidebarModeRef = useRef<NotebookSidebarMode>('active')
-  const [notebooksCollapsed, setNotebooksCollapsed] = useState(false)
+  const [bookmarkSpacesCollapsed, setBookmarkSpacesCollapsed] = useState<Set<string>>(new Set())
+  const [librarySpacesCollapsed, setLibrarySpacesCollapsed] = useState<Set<string>>(new Set())
+  const [spaceSidebarMode, setSpaceSidebarMode] = useState<SpaceSidebarMode>('active')
+  const spaceSidebarModeRef = useRef<SpaceSidebarMode>('active')
+  const [spacesCollapsed, setSpacesCollapsed] = useState(false)
 
-  function toggleBookmarkNotebookExpanded(notebookId: string) {
-    setBookmarkNotebooksCollapsed((current) => {
+  function toggleBookmarkSpaceExpanded(spaceId: string) {
+    setBookmarkSpacesCollapsed((current) => {
       const next = new Set(current)
-      if (next.has(notebookId)) {
-        next.delete(notebookId)
+      if (next.has(spaceId)) {
+        next.delete(spaceId)
       } else {
-        next.add(notebookId)
+        next.add(spaceId)
       }
       return next
     })
   }
 
-  function isBookmarkNotebookExpanded(notebookId: string) {
-    return !bookmarkNotebooksCollapsed.has(notebookId)
+  function isBookmarkSpaceExpanded(spaceId: string) {
+    return !bookmarkSpacesCollapsed.has(spaceId)
   }
 
-  function toggleLibraryNotebookExpanded(notebookId: string) {
-    setLibraryNotebooksCollapsed((current) => {
+  function toggleLibrarySpaceExpanded(spaceId: string) {
+    setLibrarySpacesCollapsed((current) => {
       const next = new Set(current)
-      if (next.has(notebookId)) {
-        next.delete(notebookId)
+      if (next.has(spaceId)) {
+        next.delete(spaceId)
       } else {
-        next.add(notebookId)
+        next.add(spaceId)
       }
       return next
     })
   }
 
-  function isLibraryNotebookExpanded(notebookId: string) {
-    return !libraryNotebooksCollapsed.has(notebookId)
+  function isLibrarySpaceExpanded(spaceId: string) {
+    return !librarySpacesCollapsed.has(spaceId)
   }
 
-  function setLibraryNotebookExpanded(notebookId: string, expanded: boolean) {
-    setLibraryNotebooksCollapsed((current) => {
+  function setLibrarySpaceExpanded(spaceId: string, expanded: boolean) {
+    setLibrarySpacesCollapsed((current) => {
       const next = new Set(current)
       if (expanded) {
-        next.delete(notebookId)
+        next.delete(spaceId)
       } else {
-        next.add(notebookId)
+        next.add(spaceId)
       }
       return next
     })
   }
 
-  function setNotebookSidebarModeSynced(mode: NotebookSidebarMode) {
-    setNotebookSidebarMode(mode)
-    notebookSidebarModeRef.current = mode
+  function setSpaceSidebarModeSynced(mode: SpaceSidebarMode) {
+    setSpaceSidebarMode(mode)
+    spaceSidebarModeRef.current = mode
   }
 
   return {
-    notebooksHidden,
-    notebookMenuId,
+    spacesHidden,
+    spaceMenuId,
     pageMenuId,
     sidebarView,
     sidebarPanelMode,
-    bookmarkNotebooksCollapsed,
-    libraryNotebooksCollapsed,
-    notebookSidebarMode,
-    notebookSidebarModeRef,
-    notebooksCollapsed,
-    setNotebooksHidden,
-    setNotebookMenuId,
+    bookmarkSpacesCollapsed,
+    librarySpacesCollapsed,
+    spaceSidebarMode,
+    spaceSidebarModeRef,
+    spacesCollapsed,
+    setSpacesHidden,
+    setSpaceMenuId,
     setPageMenuId,
     setSidebarView,
     setSidebarPanelMode,
-    setNotebookSidebarMode: setNotebookSidebarModeSynced,
-    setNotebooksCollapsed,
-    toggleBookmarkNotebookExpanded,
-    isBookmarkNotebookExpanded,
-    toggleLibraryNotebookExpanded,
-    isLibraryNotebookExpanded,
-    setLibraryNotebookExpanded,
+    setSpaceSidebarMode: setSpaceSidebarModeSynced,
+    setSpacesCollapsed,
+    toggleBookmarkSpaceExpanded,
+    isBookmarkSpaceExpanded,
+    toggleLibrarySpaceExpanded,
+    isLibrarySpaceExpanded,
+    setLibrarySpaceExpanded,
   }
 }
 
