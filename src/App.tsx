@@ -1485,29 +1485,6 @@ function App() {
     setCommandOpen(false)
   }
 
-  function formatPageUpdatedAt(ts: number) {
-    const date = new Date(ts)
-    const now = new Date()
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-    const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000
-    if (ts >= startOfToday) {
-      return new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(date)
-    }
-    if (ts >= startOfYesterday) {
-      return 'Ayer'
-    }
-    return new Intl.DateTimeFormat('es', { day: '2-digit', month: 'short' }).format(date)
-  }
-
-  function getPagePreview(page: Page) {
-    const withoutTags = page.content
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-    return withoutTags.length > 58 ? `${withoutTags.slice(0, 58)}…` : withoutTags
-  }
-
   function selectPreviousPage() {
     if (selectedPageIndex <= 0) {
       return
@@ -1737,16 +1714,14 @@ function App() {
             onSpaceSidebarModeChange={handleSpaceSidebarModeChange}
             onSpaceCreate={handleSpaceCreate}
             onPageCreate={handlePageCreate}
+            onImport={() => void handleImportEncryptedBackup()}
             onSelectSpace={(spaceId) => {
-              if (selectedSpaceId !== spaceId) {
-                setSelectedSpaceId(spaceId)
-                setLibrarySpaceExpanded(spaceId, true)
-              } else {
-                toggleLibrarySpaceExpanded(spaceId)
-              }
+              setSelectedSpaceId(spaceId)
+              setLibrarySpaceExpanded(spaceId, true)
               setSidebarView('pages')
               void refreshPages(spaceId)
             }}
+            onToggleSpaceExpanded={toggleLibrarySpaceExpanded}
             onSelectPage={setSelectedPageId}
             onToggleSpaceMenu={(spaceId) => setSpaceMenuId((value) => (value === spaceId ? null : spaceId))}
             onTogglePageMenu={(pageId) => setPageMenuId((value) => (value === pageId ? null : pageId))}
@@ -1763,8 +1738,6 @@ function App() {
             onOpenBookmarkPage={(pageId) => void openBookmarkPage(pageId)}
             isSpaceArchived={isSpaceArchived}
             isPageBookmarked={isPageBookmarked}
-            formatPageUpdatedAt={formatPageUpdatedAt}
-            getPagePreview={getPagePreview}
           />
 
           <EditorPanel
