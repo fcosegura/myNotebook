@@ -333,7 +333,8 @@ function normalizeBackupPages(
     if (!spaceId) {
       throw new Error('Pagina de backup sin spaceId/notebookId.')
     }
-    const { notebookId: _legacyNotebookId, ...rest } = page
+    const rest = { ...page } as Page & { notebookId?: string }
+    delete rest.notebookId
     return {
       ...rest,
       spaceId,
