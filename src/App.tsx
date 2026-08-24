@@ -1300,7 +1300,7 @@ function App() {
     refreshEditorFormatStateSoon()
   }
 
-  function applyEditorComment() {
+  async function applyEditorComment() {
     if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
@@ -1311,10 +1311,17 @@ function App() {
       return
     }
 
-    const existing = commentContainingRange(editor, range)
+    const savedRange = range.cloneRange()
+    const existing = commentContainingRange(editor, savedRange)
     if (existing) {
       const currentBody = getCommentBodyText(existing)
-      const newBody = window.prompt('Editar comentario', currentBody)
+      const newBody = await requestTextDialog({
+        title: 'Editar comentario',
+        message: 'Deja el campo vacío para quitar el comentario.',
+        confirmLabel: 'Guardar',
+        placeholder: 'Escribe tu comentario',
+        initialValue: currentBody,
+      })
       if (newBody === null) {
         editor.focus()
         return
@@ -1329,13 +1336,21 @@ function App() {
       return
     }
 
-    if (range.collapsed) {
-      window.alert('Selecciona el texto que quieres comentar.')
+    if (savedRange.collapsed) {
+      await requestAlertDialog({
+        title: 'Selecciona texto',
+        message: 'Selecciona el texto que quieres comentar.',
+      })
       editor.focus()
       return
     }
 
-    const bodyText = window.prompt('Comentario', '')
+    const bodyText = await requestTextDialog({
+      title: 'Comentario',
+      message: 'Añade una nota al texto seleccionado.',
+      confirmLabel: 'Añadir',
+      placeholder: 'Escribe tu comentario',
+    })
     if (bodyText === null) {
       editor.focus()
       return
@@ -1343,13 +1358,13 @@ function App() {
 
     editor.focus()
     selection.removeAllRanges()
-    selection.addRange(range)
-    insertCommentAtRange(range, bodyText.trim() || 'Comentario')
+    selection.addRange(savedRange)
+    insertCommentAtRange(savedRange, bodyText.trim() || 'Comentario')
     flushEditorContentFromDom(editor)
     refreshEditorFormatStateSoon()
   }
 
-  function createOrEditLink() {
+  async function createOrEditLink() {
     if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
       return
     }
@@ -1365,7 +1380,14 @@ function App() {
         : (range.startContainer as HTMLElement)
     )?.closest('a')
     const currentHref = existingLink instanceof HTMLAnchorElement ? existingLink.href : ''
-    const rawUrl = window.prompt('URL del enlace', currentHref)
+    const savedRange = range.cloneRange()
+    const rawUrl = await requestTextDialog({
+      title: 'Enlace',
+      message: 'Introduce la URL del enlace. Deja el campo vacío para quitarlo.',
+      confirmLabel: 'Guardar',
+      placeholder: 'https://ejemplo.com',
+      initialValue: currentHref,
+    })
     if (rawUrl === null) {
       editor.focus()
       return
@@ -1373,7 +1395,7 @@ function App() {
     const url = rawUrl.trim()
     editor.focus()
     selection.removeAllRanges()
-    selection.addRange(range)
+    selection.addRange(savedRange)
     if (!url) {
       document.execCommand('unlink', false)
     } else {
@@ -1883,8 +1905,8 @@ function App() {
             onApplyEditorBlockquote={applyEditorBlockquote}
             onClearEditorFormat={clearEditorFormat}
             onInsertHorizontalRule={insertHorizontalRule}
-            onCreateOrEditLink={createOrEditLink}
-            onApplyEditorComment={applyEditorComment}
+            onCreateOrEditLink={() => void createOrEditLink()}
+            onApplyEditorComment={() => void applyEditorComment()}
             onEditorInput={handleEditorInput}
             onEditorRichTextClick={handleEditorRichTextClick}
             onProcessImagePaste={(event) => { void processImagePaste(event) }}
