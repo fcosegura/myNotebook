@@ -61,12 +61,18 @@ import { isSpaceArchived, formatLastSavedDisplay } from './utils/helpers'
 import {
   appendImageReferenceToContent,
   blockquoteContainingRange,
+  commentContainingRange,
+  getCommentBodyText,
   insertCaretMarkerBeforeCollapsed,
+  insertCommentAtRange,
   insertImagePasteMarker,
   insertImageReferenceAtPasteMarker,
   linkifyEditorAutoLinksPreservingCaret,
   restoreCaretAtMarker,
+  toggleCommentCollapsed,
   unwrapBlockquoteElement,
+  unwrapCommentElement,
+  updateCommentBody,
 } from './ui/editorRichText'
 import {
   TASKMANAGER_CREATE_NOTEBOOK_MESSAGE_TYPE,
@@ -97,6 +103,7 @@ type EditorFormatState = {
   unorderedList: boolean
   orderedList: boolean
   blockquote: boolean
+  comment: boolean
   block: EditorBlockFormat
 }
 
@@ -108,6 +115,7 @@ const DEFAULT_EDITOR_FORMAT_STATE: EditorFormatState = {
   unorderedList: false,
   orderedList: false,
   blockquote: false,
+  comment: false,
   block: 'P',
 }
 
@@ -1195,6 +1203,7 @@ function App() {
       unorderedList: document.queryCommandState('insertUnorderedList'),
       orderedList: document.queryCommandState('insertOrderedList'),
       blockquote: blockquoteContainingRange(editor, range) !== null,
+      comment: commentContainingRange(editor, range) !== null,
       block: blockFormatForRange(range, editor),
     })
   }
@@ -1296,7 +1305,71 @@ function App() {
     refreshEditorFormatStateSoon()
   }
 
-  function createOrEditLink() {
+  async function applyEditorComment() {
+    if (!selectedPage || !editorRef.current || selectedSpaceReadOnly) {
+      return
+    }
+    const editor = editorRef.current
+    const selection = window.getSelection()
+    const range = editorSelectionRange()
+    if (!selection || !range) {
+      return
+    }
+
+    const savedRange = range.cloneRange()
+    const existing = commentContainingRange(editor, savedRange)
+    if (existing) {
+      const currentBody = getCommentBodyText(existing)
+      const newBody = await requestTextDialog({
+        title: 'Editar comentario',
+        message: 'Deja el campo vacío para quitar el comentario.',
+        confirmLabel: 'Guardar',
+        placeholder: 'Escribe tu comentario',
+        initialValue: currentBody,
+      })
+      if (newBody === null) {
+        editor.focus()
+        return
+      }
+      if (!newBody.trim()) {
+        unwrapCommentElement(existing)
+      } else {
+        updateCommentBody(existing, newBody.trim())
+      }
+      flushEditorContentFromDom(editor)
+      refreshEditorFormatStateSoon()
+      return
+    }
+
+    if (savedRange.collapsed) {
+      await requestAlertDialog({
+        title: 'Selecciona texto',
+        message: 'Selecciona el texto que quieres comentar.',
+      })
+      editor.focus()
+      return
+    }
+
+    const bodyText = await requestTextDialog({
+      title: 'Comentario',
+      message: 'Añade una nota al texto seleccionado.',
+      confirmLabel: 'Añadir',
+      placeholder: 'Escribe tu comentario',
+    })
+    if (bodyText === null) {
+      editor.focus()
+      return
+    }
+
+    editor.focus()
+    selection.removeAllRanges()
+    selection.addRange(savedRange)
+    insertCommentAtRange(savedRange, bodyText.trim() || 'Comentario')
+    flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
+  }
+
+  async function createOrEditLink() {
     if (!selectedPage || !editorRef.current || selectedSpaceReadOnly) {
       return
     }
@@ -1312,7 +1385,14 @@ function App() {
         : (range.startContainer as HTMLElement)
     )?.closest('a')
     const currentHref = existingLink instanceof HTMLAnchorElement ? existingLink.href : ''
-    const rawUrl = window.prompt('URL del enlace', currentHref)
+    const savedRange = range.cloneRange()
+    const rawUrl = await requestTextDialog({
+      title: 'Enlace',
+      message: 'Introduce la URL del enlace. Deja el campo vacío para quitarlo.',
+      confirmLabel: 'Guardar',
+      placeholder: 'https://ejemplo.com',
+      initialValue: currentHref,
+    })
     if (rawUrl === null) {
       editor.focus()
       return
@@ -1320,7 +1400,7 @@ function App() {
     const url = rawUrl.trim()
     editor.focus()
     selection.removeAllRanges()
-    selection.addRange(range)
+    selection.addRange(savedRange)
     if (!url) {
       document.execCommand('unlink', false)
     } else {
@@ -1399,8 +1479,25 @@ function App() {
 
   function handleEditorRichTextClick(event: MouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement | null
-    const link = target?.closest('a.editor-img-ref')
-    if (!link || !editorRef.current?.contains(link)) {
+    const editor = editorRef.current
+    if (!target || !editor) {
+      return
+    }
+
+    const commentToggle = target.closest('button.editor-comment-toggle')
+    if (commentToggle && editor.contains(commentToggle)) {
+      event.preventDefault()
+      event.stopPropagation()
+      const comment = commentToggle.closest('.editor-comment')
+      if (comment instanceof HTMLElement) {
+        toggleCommentCollapsed(comment)
+        flushEditorContentFromDom(editor)
+      }
+      return
+    }
+
+    const link = target.closest('a.editor-img-ref')
+    if (!link || !editor.contains(link)) {
       return
     }
     event.preventDefault()
@@ -1805,7 +1902,8 @@ function App() {
             onApplyEditorBlockquote={applyEditorBlockquote}
             onClearEditorFormat={clearEditorFormat}
             onInsertHorizontalRule={insertHorizontalRule}
-            onCreateOrEditLink={createOrEditLink}
+            onCreateOrEditLink={() => void createOrEditLink()}
+            onApplyEditorComment={() => void applyEditorComment()}
             onEditorInput={handleEditorInput}
             onEditorRichTextClick={handleEditorRichTextClick}
             onProcessImagePaste={(event) => { void processImagePaste(event) }}
