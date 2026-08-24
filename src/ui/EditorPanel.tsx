@@ -13,6 +13,7 @@ type EditorFormatState = {
   unorderedList: boolean
   orderedList: boolean
   blockquote: boolean
+  comment: boolean
   block: EditorBlockFormat
 }
 
@@ -55,6 +56,7 @@ type EditorPanelProps = {
   onClearEditorFormat: () => void
   onInsertHorizontalRule: () => void
   onCreateOrEditLink: () => void
+  onApplyEditorComment: () => void
   onEditorInput: (event: FormEvent<HTMLDivElement>) => void
   onEditorRichTextClick: (event: MouseEvent<HTMLDivElement>) => void
   onProcessImagePaste: (event: ClipboardEvent<HTMLDivElement>) => void
@@ -102,6 +104,7 @@ export function EditorPanel({
   onClearEditorFormat,
   onInsertHorizontalRule,
   onCreateOrEditLink,
+  onApplyEditorComment,
   onEditorInput,
   onEditorRichTextClick,
   onProcessImagePaste,
@@ -237,6 +240,7 @@ export function EditorPanel({
                           <button type="button" disabled={readOnly} className={`toolbar-icon-btn${editorFormatState.underline ? ' is-active' : ''}`} aria-pressed={editorFormatState.underline} onClick={() => onApplyEditorCommand('underline')} title="Subrayado (Ctrl/Cmd+U)" aria-label="Subrayado"><span className="toolbar-underline">U</span></button>
                           <button type="button" disabled={readOnly} className={`toolbar-icon-btn${editorFormatState.strikeThrough ? ' is-active' : ''}`} aria-pressed={editorFormatState.strikeThrough} onClick={() => onApplyEditorCommand('strikeThrough')} title="Tachado" aria-label="Tachado"><span className="toolbar-strike">S</span></button>
                           <button type="button" disabled={readOnly} className={`toolbar-icon-btn${editorFormatState.blockquote ? ' is-active' : ''}`} aria-pressed={editorFormatState.blockquote} onClick={onApplyEditorBlockquote} title="Cita" aria-label="Alternar cita"><QuoteIcon /></button>
+                          <button type="button" disabled={readOnly} className={`toolbar-text-btn${editorFormatState.comment ? ' is-active' : ''}`} aria-pressed={editorFormatState.comment} onClick={onApplyEditorComment} title="Comentario colapsable" aria-label="Añadir o editar comentario">Comentario</button>
                           <button type="button" disabled={readOnly} className="toolbar-text-btn" onClick={onCreateOrEditLink} title="Crear o editar enlace" aria-label="Crear o editar enlace">Link</button>
                         </div>
                       </section>
