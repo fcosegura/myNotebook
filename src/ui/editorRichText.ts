@@ -318,3 +318,120 @@ export function escapeHtml(value: string): string {
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
 }
+
+const EDITOR_COMMENT_CLASS = 'editor-comment'
+
+export function commentContainingRange(root: HTMLElement, range: Range): HTMLElement | null {
+  let n: Node | null = range.commonAncestorContainer
+  if (n.nodeType === Node.TEXT_NODE) {
+    n = n.parentNode
+  }
+  while (n && n !== root) {
+    if (n instanceof HTMLElement && n.classList.contains(EDITOR_COMMENT_CLASS)) {
+      return n
+    }
+    n = n.parentNode
+  }
+  return null
+}
+
+export function createCommentWidget(
+  highlightContent: DocumentFragment | string,
+  bodyText: string,
+  collapsed = true,
+): HTMLSpanElement {
+  const comment = document.createElement('span')
+  comment.className = EDITOR_COMMENT_CLASS
+  comment.dataset.commentId = crypto.randomUUID()
+  comment.dataset.collapsed = collapsed ? 'true' : 'false'
+
+  const highlight = document.createElement('mark')
+  highlight.className = 'editor-comment-highlight'
+  if (typeof highlightContent === 'string') {
+    highlight.textContent = highlightContent
+  } else {
+    highlight.appendChild(highlightContent)
+  }
+
+  const chrome = document.createElement('span')
+  chrome.className = 'editor-comment-chrome'
+  chrome.setAttribute('contenteditable', 'false')
+
+  const toggle = document.createElement('button')
+  toggle.type = 'button'
+  toggle.className = 'editor-comment-toggle'
+  toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
+  toggle.title = 'Mostrar u ocultar comentario'
+  toggle.setAttribute('aria-label', 'Comentario')
+  toggle.textContent = '💬'
+
+  const body = document.createElement('span')
+  body.className = 'editor-comment-body'
+  body.textContent = bodyText
+  body.hidden = collapsed
+
+  chrome.appendChild(toggle)
+  chrome.appendChild(body)
+  comment.appendChild(highlight)
+  comment.appendChild(chrome)
+  return comment
+}
+
+export function insertCommentAtRange(
+  range: Range,
+  bodyText: string,
+  collapsed = true,
+): HTMLSpanElement | null {
+  if (range.collapsed) {
+    return null
+  }
+
+  const fragment = range.extractContents()
+  const comment = createCommentWidget(fragment, bodyText, collapsed)
+  range.insertNode(comment)
+  placeCaretAfterNode(comment)
+  return comment
+}
+
+export function toggleCommentCollapsed(comment: HTMLElement) {
+  const collapsed = comment.dataset.collapsed !== 'false'
+  const nextCollapsed = !collapsed
+  comment.dataset.collapsed = nextCollapsed ? 'true' : 'false'
+
+  const body = comment.querySelector('.editor-comment-body')
+  const toggle = comment.querySelector('.editor-comment-toggle')
+  if (body instanceof HTMLElement) {
+    body.hidden = nextCollapsed
+  }
+  if (toggle instanceof HTMLButtonElement) {
+    toggle.setAttribute('aria-expanded', nextCollapsed ? 'false' : 'true')
+  }
+}
+
+export function updateCommentBody(comment: HTMLElement, bodyText: string) {
+  const body = comment.querySelector('.editor-comment-body')
+  if (body instanceof HTMLElement) {
+    body.textContent = bodyText
+  }
+}
+
+export function getCommentBodyText(comment: HTMLElement): string {
+  return comment.querySelector('.editor-comment-body')?.textContent ?? ''
+}
+
+export function unwrapCommentElement(comment: HTMLElement) {
+  const highlight = comment.querySelector('.editor-comment-highlight')
+  const parent = comment.parentNode
+  if (!parent) {
+    return
+  }
+
+  const fragment = document.createDocumentFragment()
+  if (highlight) {
+    while (highlight.firstChild) {
+      fragment.appendChild(highlight.firstChild)
+    }
+  }
+  parent.insertBefore(fragment, comment)
+  parent.removeChild(comment)
+}

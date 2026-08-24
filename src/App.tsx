@@ -57,12 +57,18 @@ import { isNotebookArchived, formatLastSavedDisplay } from './utils/helpers'
 import {
   appendImageReferenceToContent,
   blockquoteContainingRange,
+  commentContainingRange,
+  getCommentBodyText,
   insertCaretMarkerBeforeCollapsed,
+  insertCommentAtRange,
   insertImagePasteMarker,
   insertImageReferenceAtPasteMarker,
   linkifyEditorAutoLinksPreservingCaret,
   restoreCaretAtMarker,
+  toggleCommentCollapsed,
   unwrapBlockquoteElement,
+  unwrapCommentElement,
+  updateCommentBody,
 } from './ui/editorRichText'
 import {
   TASKMANAGER_CREATE_NOTEBOOK_MESSAGE_TYPE,
@@ -93,6 +99,7 @@ type EditorFormatState = {
   unorderedList: boolean
   orderedList: boolean
   blockquote: boolean
+  comment: boolean
   block: EditorBlockFormat
 }
 
@@ -104,6 +111,7 @@ const DEFAULT_EDITOR_FORMAT_STATE: EditorFormatState = {
   unorderedList: false,
   orderedList: false,
   blockquote: false,
+  comment: false,
   block: 'P',
 }
 
@@ -1190,6 +1198,7 @@ function App() {
       unorderedList: document.queryCommandState('insertUnorderedList'),
       orderedList: document.queryCommandState('insertOrderedList'),
       blockquote: blockquoteContainingRange(editor, range) !== null,
+      comment: commentContainingRange(editor, range) !== null,
       block: blockFormatForRange(range, editor),
     })
   }
@@ -1287,6 +1296,55 @@ function App() {
     const editor = editorRef.current
     editor.focus()
     document.execCommand('insertHorizontalRule', false)
+    flushEditorContentFromDom(editor)
+    refreshEditorFormatStateSoon()
+  }
+
+  function applyEditorComment() {
+    if (!selectedPage || !editorRef.current || selectedNotebookReadOnly) {
+      return
+    }
+    const editor = editorRef.current
+    const selection = window.getSelection()
+    const range = editorSelectionRange()
+    if (!selection || !range) {
+      return
+    }
+
+    const existing = commentContainingRange(editor, range)
+    if (existing) {
+      const currentBody = getCommentBodyText(existing)
+      const newBody = window.prompt('Editar comentario', currentBody)
+      if (newBody === null) {
+        editor.focus()
+        return
+      }
+      if (!newBody.trim()) {
+        unwrapCommentElement(existing)
+      } else {
+        updateCommentBody(existing, newBody.trim())
+      }
+      flushEditorContentFromDom(editor)
+      refreshEditorFormatStateSoon()
+      return
+    }
+
+    if (range.collapsed) {
+      window.alert('Selecciona el texto que quieres comentar.')
+      editor.focus()
+      return
+    }
+
+    const bodyText = window.prompt('Comentario', '')
+    if (bodyText === null) {
+      editor.focus()
+      return
+    }
+
+    editor.focus()
+    selection.removeAllRanges()
+    selection.addRange(range)
+    insertCommentAtRange(range, bodyText.trim() || 'Comentario')
     flushEditorContentFromDom(editor)
     refreshEditorFormatStateSoon()
   }
@@ -1394,8 +1452,25 @@ function App() {
 
   function handleEditorRichTextClick(event: MouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement | null
-    const link = target?.closest('a.editor-img-ref')
-    if (!link || !editorRef.current?.contains(link)) {
+    const editor = editorRef.current
+    if (!target || !editor) {
+      return
+    }
+
+    const commentToggle = target.closest('button.editor-comment-toggle')
+    if (commentToggle && editor.contains(commentToggle)) {
+      event.preventDefault()
+      event.stopPropagation()
+      const comment = commentToggle.closest('.editor-comment')
+      if (comment instanceof HTMLElement) {
+        toggleCommentCollapsed(comment)
+        flushEditorContentFromDom(editor)
+      }
+      return
+    }
+
+    const link = target.closest('a.editor-img-ref')
+    if (!link || !editor.contains(link)) {
       return
     }
     event.preventDefault()
@@ -1809,6 +1884,7 @@ function App() {
             onClearEditorFormat={clearEditorFormat}
             onInsertHorizontalRule={insertHorizontalRule}
             onCreateOrEditLink={createOrEditLink}
+            onApplyEditorComment={applyEditorComment}
             onEditorInput={handleEditorInput}
             onEditorRichTextClick={handleEditorRichTextClick}
             onProcessImagePaste={(event) => { void processImagePaste(event) }}

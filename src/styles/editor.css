@@ -437,6 +437,72 @@
   text-underline-offset: 3px;
 }
 
+.editor-richtext .editor-comment {
+  display: inline;
+  white-space: normal;
+}
+
+.editor-richtext .editor-comment-highlight {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  padding: 0 2px;
+  border-radius: 2px;
+  color: inherit;
+}
+
+.editor-richtext .editor-comment-chrome {
+  display: inline;
+  vertical-align: baseline;
+}
+
+.editor-richtext .editor-comment-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35em;
+  height: 1.35em;
+  margin: 0 0 0 3px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 0.72em;
+  cursor: pointer;
+  vertical-align: super;
+  line-height: 1;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.editor-richtext .editor-comment-toggle:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-color: var(--accent);
+}
+
+.editor-richtext .editor-comment-toggle[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border-color: var(--accent);
+}
+
+.editor-richtext .editor-comment-body {
+  display: inline-block;
+  margin: 0 0 0 4px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-strong);
+  color: var(--text-soft);
+  font-size: 0.88em;
+  font-style: italic;
+  max-width: min(24rem, 100%);
+  vertical-align: baseline;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.editor-richtext .editor-comment[data-collapsed="true"] .editor-comment-body {
+  display: none;
+}
+
 .editor-footer-tip {
   min-height: 30px;
   display: flex;
